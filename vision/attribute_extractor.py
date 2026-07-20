@@ -97,7 +97,17 @@ ATRIBUTOS REQUERIDOS (usa EXACTAMENTE estos valores):
   - botella_cerveza_vidrio | botella_jugo_vidrio | frasco_vidrio | vaso_vidrio para envases de vidrio
   - Si el clasificador rápido dijo "vidrio", confía en el material aunque la forma parezca botella de agua
   - TAPA METÁLICA DE COLOR ≠ rosca_plastico: Gatorade, jugos y bebidas de café en VIDRIO usan tapa twist-off METÁLICA delgada pintada (naranja, roja, dorada). Una tapa plana, delgada y de borde liso es twist_off_metalica aunque sea de color; la rosca_plastico es más GRUESA, alta y con estrías verticales
-  - botella_gatorade existe en VIDRIO (473ml, cuello corto, hombros redondeados, tapa metálica de color) y en PLÁSTICO (boca ancha, tapa rosca plástica gruesa). Decide el material por el envase y la tapa, NO por la marca
+  - botella_gatorade existe en VIDRIO (473ml, cuello corto, hombros redondeados, tapa metálica de color) y en PLÁSTICO (500ml/591ml/1 litro, boca ancha, tapa rosca plástica gruesa). NO confíes solo en la tapa o el brillo para decidir el material de Gatorade — en fotos borrosas o de cerca se confunden fácilmente. Usa estas dos señales, en este orden de prioridad:
+    1) TEXTO DE VOLUMEN IMPRESO en la etiqueta (ej. "473 mL", "500 ml", "591ml", "1 LITRO"): si dice 473ml → VIDRIO; si dice 500ml, 591ml, 1 litro o cualquier otro volumen → PLÁSTICO. Este es el dato MÁS confiable, léelo con cuidado antes de decidir.
+    2) TEXTURA DEL CUERPO si no puedes leer el volumen: el Gatorade de PLÁSTICO tiene nervaduras/canales de agarre (grip) horizontales o verticales visibles en el cuerpo (textura = rugosa); el de VIDRIO es completamente liso sin nervaduras (textura = lisa_brillante)
+    Solo si ninguna de las dos señales es clara, decide por tapa y brillo como último recurso
+
+  ENVASE SOSTENIDO CON LA MANO, ACOSTADO O A UN ÁNGULO (la tapa queda tapada por los dedos o poco visible):
+  - NUNCA asumas tapa = rosca_plastico solo porque no puedes verla con claridad — eso sesga todo hacia PLÁSTICO por defecto y es un error común en fotos de mano/ángulo.
+  - Con la tapa oculta o dudosa, prioriza el CUERPO visible del envase en este orden:
+    1) Relieve/grabado en el propio material: letras, logos o marcas HUNDIDAS en el vidrio (siguen la curva del envase, mismo color que el vidrio, sin patrón repetitivo) → VIDRIO. Nervaduras de agarre REPETIDAS y uniformes con textura tipo goma → PLÁSTICO.
+    2) Brillo del cuerpo aunque esté acostado o en sombra: el vidrio conserva un reflejo especular duro y curvo (como espejo) incluso en ángulo; el PET tiene un brillo más plano y difuso.
+  - Si tras esto la tapa sigue sin verse, repórtala igual como tu mejor estimación, pero deja que el CUERPO (no la tapa) decida el material.
 
   OBJETOS NO PERMITIDOS (no plástico ni vidrio):
   - lata, papel_servilleta, carton, tetra_pak, cascara_fruta, restos_comida → usar objeto_reconocido correcto
