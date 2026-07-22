@@ -1261,20 +1261,20 @@ Demo estable en laptop con cámara:
   *Archivos:* `vision/visual_heuristics.py`, capa previa a SE en `attribute_extractor.py` o `tm_classifier.py`  
   *Listo cuando:* `test_refinar_api.py` 5/5 y sin regresiones en batch 16/16.
 
-- [ ] **A5 — Triple captura + voto mayoritario**  
-  Tras countdown: 3 fotos (~0.3 s). Mayoría gana; empate o tres distintos → `DESCONOCIDO`.  
-  *Archivos:* `vision/camera.py`  
-  *Listo cuando:* mismo objeto con mano temblorosa da resultado estable.
+- [x] **A5 — Triple captura + voto mayoritario**  
+  Tras countdown: 3 fotos reales (~0.3 s entre cada una, `Camera.capturar_rafaga`), cada una pasa por el flujo híbrido completo. Mayoría gana (se queda con el resultado de mayor confianza entre los votos ganadores); sin mayoría (ej. 3 conclusiones distintas o empate) → `DESCONOCIDO`. Aplica tanto en `modo_demo` (cámara interactiva) como en `capturar_y_clasificar` (Raspberry Pi + sensor ultrasónico).  
+  *Archivos:* `vision/camera.py` (`capturar_rafaga`, `_analizar_multiple`)  
+  *Listo:* `tests/test_voto_mayoritario.py` 6/6 (mayoría 2/3, unanimidad, empate, fallos parciales/totales).
 
 - [x] **A6 — Logging completo por clasificación**  
   Guardar en `logs/clasificaciones.jsonl`: imagen, TM, atributos antes/después de `refinar_atributos_api`, conclusión, CF, reglas disparadas, backward, proveedor.  
   *Archivos:* `vision/camera.py`, `vision/attribute_extractor.py`, `api/app.py`  
   *Listo cuando:* un fallo se explica leyendo una línea del log.
 
-- [ ] **A7 — Persistir correcciones P/V**  
-  Al pulsar P o V: `logs/correcciones.jsonl` + copiar imagen a `fotos_dataset/plastico/` o `vidrio/`.  
-  *Archivos:* `vision/camera.py`  
-  *Listo cuando:* corrección manual deja archivo en disco.
+- [x] **A7 — Persistir correcciones P/V**  
+  Al pulsar P o V: copia cada foto de la ráfaga a `fotos_dataset/plastico/` o `vidrio/` y añade una línea a `logs/correcciones.jsonl` con conclusión original, conclusión corregida, atributos, TM y proveedor de visión usados. Con debounce (no duplica si se mantiene la tecla presionada) y nunca lanza excepción — un fallo al escribir en disco no interrumpe la demo.  
+  *Archivos:* `vision/clasificacion_log.py` (`registrar_correccion_manual`), `vision/camera.py` (`_persistir_correccion`)  
+  *Listo:* `tests/test_correcciones.py` 3/3; corrección manual deja archivo en disco y línea en el log.
 
 - [ ] **A8 — Ampliar tests automatizados**  
   Tests de umbral CF (A2), Gatorade vidrio/plástico (A3), capturas nuevas en `test_imagenes_completo.py`.  
@@ -1284,7 +1284,9 @@ Demo estable en laptop con cámara:
 ### Bloque B — Validación (después de Bloque A)
 
 - [ ] **B1 — Batería manual 20 objetos**  
-  Checklist fijo campus (PET, vidrio, lata, papel, Tetra Pak, vaso blanco, etc.). Anotar causa de cada fallo: captura / API / OpenCV / SE / umbral. Meta: ≥ 18/20.
+  Checklist fijo campus (PET, vidrio, lata, papel, Tetra Pak, vaso blanco, etc.). Anotar causa de cada fallo: captura / API / OpenCV / SE / umbral / voto. Meta: ≥ 18/20.  
+  **Herramienta lista:** `python3 scripts/bateria_b1.py` — corre la lista fija con cámara real (usa A5 internamente), pregunta acierto/causa por objeto y guarda resumen versionado en `docs/bateria_b1/`. Lista completa y razonamiento de cada objeto en [`docs/BATERIA_B1.md`](docs/BATERIA_B1.md).  
+  *Pendiente:* ejecutar la sesión física con cámara y marcar `[x]` cuando el score quede registrado.
 
 - [ ] **B2 — Ajuste fino post-batería**  
   Solo corregir lo que falló en B1. Sin features nuevas.
@@ -1316,7 +1318,10 @@ Demo estable en laptop con cámara:
 python3 tests/test_cases.py
 python3 tests/test_refinar_api.py
 python3 tests/test_imagenes_completo.py
+python3 tests/test_voto_mayoritario.py
+python3 tests/test_correcciones.py
 # Opcional: python3 vision/camera.py  → 3 objetos rápidos
+# Batería B1 (con cámara física): python3 scripts/bateria_b1.py
 ```
 
 ### Cómo continuar en un chat nuevo (Cursor Agent)
@@ -1334,6 +1339,25 @@ python3 tests/test_imagenes_completo.py
 ---
 
 ## Changelog — historial de cambios
+
+### Julio 2026 — v2.9 (A5 voto mayoritario · A7 correcciones persistentes · B1 batería manual)
+
+**`vision/camera.py` (A5)**
+- `capturar_rafaga()` — 3 fotos reales separadas ~0.3 s (no recortes de la misma imagen), cada una con timestamp a microsegundos para no colisionar.
+- `_analizar_multiple()` — corre el flujo híbrido completo sobre cada foto y decide por mayoría; sin mayoría (ej. 3 conclusiones distintas) → `DESCONOCIDO` en vez de arriesgar una compuerta equivocada.
+- Aplica tanto en `modo_demo` (cámara interactiva) como en `capturar_y_clasificar` (Raspberry Pi + sensor ultrasónico).
+
+**`vision/clasificacion_log.py` + `vision/camera.py` (A7)**
+- `registrar_correccion_manual()` — al corregir con P/V, copia las fotos de la ráfaga a `fotos_dataset/plastico/` o `vidrio/` y añade una línea a `logs/correcciones.jsonl` con conclusión original vs. corregida, atributos y contexto de visión usados. Debounce para no duplicar si se mantiene la tecla presionada.
+
+**`scripts/bateria_b1.py` + `docs/BATERIA_B1.md` (B1)**
+- Herramienta interactiva para correr la lista fija de 20 objetos del campus con cámara real, registrar acierto/causa por objeto y guardar resumen versionado en `docs/bateria_b1/`.
+- Lista elegida para presionar los puntos débiles conocidos de vidrio-vs-plástico: pares del mismo producto en ambos materiales (Gatorade PET vs. vidrio), PET de color oscuro (Fioravanti) y vidrio con condensación (apaga el brillo especular).
+
+**Tests**
+- `tests/test_voto_mayoritario.py` (6/6) — mayoría 2/3, unanimidad, empate a tres, fallos parciales/totales de la ráfaga.
+- `tests/test_correcciones.py` (3/3) — copia de imagen, log JSONL, tipo inválido, sin imágenes.
+- Sin regresiones: SE 110/110, refinar API 7/8 en este entorno (el caso restante requiere el modelo TM real, no probado aquí por falta de TensorFlow para Python 3.14 — no relacionado con este cambio).
 
 ### Julio 2026 — v2.8 (documentación + entrenamiento automático)
 

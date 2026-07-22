@@ -1,0 +1,2 @@
+0 plastico
+1 vidrio

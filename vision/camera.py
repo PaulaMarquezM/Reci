@@ -2,15 +2,25 @@
 # Módulo de captura de imagen en tiempo real
 # Modo demo: ESPACIO activa cuenta regresiva → captura → clasifica
 # Flujo: TM (contexto) → API visión (análisis) → SE (decisión) · fallback TM+OpenCV
+# Triple captura + voto mayoritario contra temblor/reflejos momentáneos (roadmap A5)
 # En producción: sensor ultrasónico reemplaza el ESPACIO
 
 import cv2
 import os
+import sys
 import time
 import threading
 import numpy as np
+from collections import Counter
 from pathlib import Path
 from datetime import datetime
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from vision.clasificacion_log import registrar_correccion_manual
+
+NUM_CAPTURAS_DEFAULT       = 3
+INTERVALO_CAPTURAS_DEFAULT = 0.3
 
 
 class Camera:
@@ -50,26 +60,55 @@ class Camera:
         if not ret:
             raise RuntimeError("No se pudo capturar imagen")
         if not nombre:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Microsegundos para no colisionar entre las 3 fotos de una misma
+            # ráfaga (roadmap A5), que caen dentro del mismo segundo de reloj.
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             nombre = f"captura_{timestamp}.jpg"
         ruta = self.carpeta / nombre
         cv2.imwrite(str(ruta), frame)
         print(f"  📸 Foto guardada: {ruta}")
         return str(ruta)
 
-    def modo_demo(self, extractor=None, tm_classifier=None, cuenta_regresiva=1):
+    def capturar_rafaga(self, n=NUM_CAPTURAS_DEFAULT, intervalo=INTERVALO_CAPTURAS_DEFAULT):
+        """
+        Captura N fotos reales separadas por `intervalo` segundos (roadmap A5).
+
+        Cada foto es una lectura nueva de la cámara (no un recorte de la misma
+        imagen), para que el voto mayoritario compense reflejos momentáneos,
+        temblor de mano o parpadeo de luz entre una foto y otra.
+        """
+        rutas = []
+        for i in range(max(1, n)):
+            rutas.append(self.capturar_foto(nombre=f"rafaga_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{i}.jpg"))
+            if i < n - 1:
+                time.sleep(intervalo)
+        return rutas
+
+    def modo_demo(self, extractor=None, tm_classifier=None, cuenta_regresiva=1,
+                  num_capturas=NUM_CAPTURAS_DEFAULT,
+                  intervalo_capturas=INTERVALO_CAPTURAS_DEFAULT):
         """
         Modo demo para presentaciones y pruebas.
-        ESPACIO → cuenta regresiva → captura → análisis → resultado
+        ESPACIO → cuenta regresiva → ráfaga de N fotos → voto mayoritario → resultado
 
         Tres destinos posibles:
         - VIDRIO    → compuerta izquierda
         - PLASTICO  → compuerta derecha
         - Resto     → tacho general (con botones P/V para corregir si hay error)
 
+        Voto mayoritario (roadmap A5): se toman `num_capturas` fotos reales
+        separadas por `intervalo_capturas` segundos y cada una pasa por el
+        flujo completo (TM + API + SE). Si ninguna conclusión obtiene mayoría
+        (todas distintas), el resultado final es DESCONOCIDO — más seguro que
+        confiar en una sola foto que pudo tener un reflejo o temblor puntual.
+
         Corrección manual en pantalla de resultado:
         - P → corregir a PLÁSTICO
         - V → corregir a VIDRIO
+        Cada corrección se persiste (roadmap A7): las fotos de esta ráfaga se
+        copian a `fotos_dataset/plastico/` o `vidrio/` y queda un registro en
+        `logs/correcciones.jsonl` con el contexto completo de la clasificación
+        original, para poder reentrenar o depurar dirigido a esos casos.
 
         En producción: sensor ultrasónico reemplaza el ESPACIO.
         """
@@ -80,7 +119,7 @@ class Camera:
         print("  ─────────────────────────────────────────")
         print("  1. Coloca el objeto frente a la cámara")
         print("  2. Presiona ESPACIO para clasificar")
-        print("  3. Espera el resultado")
+        print(f"  3. Se toman {num_capturas} fotos y se decide por mayoría")
         print("  ─────────────────────────────────────────")
         if tm_classifier:
             print("  🤖 Flujo híbrido: TM (contexto) → API visión (análisis) → SE (decisión)")
@@ -93,14 +132,16 @@ class Camera:
         ANALIZANDO = "analizando"
         RESULTADO  = "resultado"
 
-        estado           = PREVIEW
-        tiempo_countdown = None
-        ultimo_resultado = None
-        tiempo_resultado = None
-        frame_capturado  = None
-        ruta_analisis    = None
-        hilo_analisis    = None
-        resultado_hilo   = [None]
+        estado             = PREVIEW
+        tiempo_countdown   = None
+        ultimo_resultado   = None
+        tiempo_resultado   = None
+        frame_capturado    = None
+        rutas_analisis     = []
+        conclusion_original = None
+        correccion_guardada = None
+        hilo_analisis      = None
+        resultado_hilo     = [None]
         progreso_texto   = ["Analizando imagen   ",
                             "Analizando imagen.  ",
                             "Analizando imagen.. ",
@@ -149,7 +190,13 @@ class Camera:
                                (255, 255, 0), 2)
                 else:
                     frame_capturado = frame.copy()
-                    ruta_analisis   = self.capturar_foto()
+                    # Ráfaga síncrona (roadmap A5): ~0.3s×N, se hace en el hilo
+                    # principal porque cv2.VideoCapture no es seguro de leer
+                    # desde dos hilos a la vez. El hilo de análisis abajo solo
+                    # corre la parte lenta (TM + API), no la captura.
+                    rutas_analisis = self.capturar_rafaga(
+                        n=num_capturas, intervalo=intervalo_capturas)
+                    correccion_guardada = None
                     estado          = ANALIZANDO
                     progreso_idx    = 0
                     tiempo_progreso = ahora
@@ -158,9 +205,9 @@ class Camera:
                     # Gemini / TM responden.
                     if extractor:
                         resultado_hilo = [None]
-                        def _run_analisis(ruta=ruta_analisis):
-                            resultado_hilo[0] = self._analizar(
-                                extractor, ruta, tm_classifier=tm_classifier)
+                        def _run_analisis(rutas=rutas_analisis):
+                            resultado_hilo[0] = self._analizar_multiple(
+                                extractor, rutas, tm_classifier=tm_classifier)
                         hilo_analisis = threading.Thread(
                             target=_run_analisis, daemon=True)
                         hilo_analisis.start()
@@ -197,12 +244,16 @@ class Camera:
 
                 # Transición a RESULTADO cuando el hilo termine
                 if hilo_analisis is not None and not hilo_analisis.is_alive():
-                    ultimo_resultado = resultado_hilo[0]
+                    ultimo_resultado    = resultado_hilo[0]
+                    conclusion_original = (
+                        ultimo_resultado.get("conclusion") if ultimo_resultado else None
+                    )
                     estado           = RESULTADO
                     tiempo_resultado = time.time()
                     hilo_analisis    = None
                 elif hilo_analisis is None:
                     # Sin extractor — pasar directamente
+                    conclusion_original = None
                     estado           = RESULTADO
                     tiempo_resultado = time.time()
 
@@ -246,6 +297,10 @@ class Camera:
 
             elif key == ord('p') or key == ord('P'):
                 if estado == RESULTADO and ultimo_resultado:
+                    if correccion_guardada != "PLASTICO":
+                        self._persistir_correccion(
+                            "PLASTICO", ultimo_resultado, conclusion_original, rutas_analisis)
+                        correccion_guardada = "PLASTICO"
                     ultimo_resultado["conclusion"]               = "PLASTICO"
                     ultimo_resultado["hardware"]["compuerta"]    = "derecha"
                     ultimo_resultado["hardware"]["led"]          = "verde"
@@ -256,6 +311,10 @@ class Camera:
 
             elif key == ord('v') or key == ord('V'):
                 if estado == RESULTADO and ultimo_resultado:
+                    if correccion_guardada != "VIDRIO":
+                        self._persistir_correccion(
+                            "VIDRIO", ultimo_resultado, conclusion_original, rutas_analisis)
+                        correccion_guardada = "VIDRIO"
                     ultimo_resultado["conclusion"]               = "VIDRIO"
                     ultimo_resultado["hardware"]["compuerta"]    = "izquierda"
                     ultimo_resultado["hardware"]["led"]          = "azul"
@@ -419,14 +478,86 @@ class Camera:
                 print(f"  ❌ Fallback TM también falló: {e2}")
             return None
 
-    def capturar_y_clasificar(self, extractor, tm_classifier=None, delay=2):
-        """Para Raspberry Pi + sensor ultrasónico."""
+    def _analizar_multiple(self, extractor, rutas, tm_classifier=None):
+        """
+        Corre `_analizar` sobre cada foto de la ráfaga y decide por voto
+        mayoritario (roadmap A5).
+
+        - Mayoría absoluta (>50% de los análisis válidos) → gana esa
+          conclusión; se usa el resultado con mayor confianza entre los que
+          votaron por ella (conserva sus atributos/hardware para la demo).
+        - Sin mayoría (ej. 3 fotos → 3 conclusiones distintas, o empate) →
+          DESCONOCIDO. Es más seguro rechazar que abrir la compuerta
+          equivocada cuando las fotos no son consistentes entre sí.
+        - Si todas las fotos fallan el análisis → None (igual que antes).
+        """
+        resultados = []
+        for i, ruta in enumerate(rutas):
+            print(f"\n  📸 Foto {i + 1}/{len(rutas)} de la ráfaga")
+            r = self._analizar(extractor, ruta, tm_classifier=tm_classifier)
+            if r is not None:
+                resultados.append(r)
+
+        if not resultados:
+            return None
+
+        conteo = Counter(r["conclusion"] for r in resultados)
+        conclusion_top, votos_top = conteo.most_common(1)[0]
+        mayoria_minima = len(resultados) // 2 + 1
+
+        print(f"\n  🗳️  VOTO MAYORITARIO: {dict(conteo)} "
+              f"({len(resultados)}/{len(rutas)} análisis válidos)")
+
+        voto_info = {
+            "capturas":     len(rutas),
+            "validos":      len(resultados),
+            "conteo":       dict(conteo),
+            "votos_ganador": votos_top,
+        }
+
+        if votos_top >= mayoria_minima:
+            candidatos = [r for r in resultados if r["conclusion"] == conclusion_top]
+            ganador = dict(max(candidatos, key=lambda r: r.get("confianza") or 0.0))
+            ganador["voto_multiple"] = voto_info
+            print(f"  ✅ Mayoría: {conclusion_top} ({votos_top}/{len(resultados)})\n")
+            return ganador
+
+        print(f"  ⚠ Sin mayoría clara — resultados inconsistentes → DESCONOCIDO\n")
+        return {
+            "atributos":  resultados[-1].get("atributos", {}),
+            "conclusion": "DESCONOCIDO",
+            "confianza":  0.0,
+            "hardware": {
+                "compuerta":    "ninguna",
+                "led":          "rojo",
+                "angulo_servo": 0,
+                "mensaje":      "Resultados inconsistentes en la ráfaga — revisa manualmente",
+            },
+            "voto_multiple": voto_info,
+        }
+
+    def _persistir_correccion(self, tipo, ultimo_resultado, conclusion_original, rutas_imagenes):
+        """Guarda una corrección manual P/V en disco (roadmap A7). Nunca interrumpe la demo."""
+        try:
+            registrar_correccion_manual(
+                tipo=tipo,
+                conclusion_original=conclusion_original,
+                resultado=ultimo_resultado,
+                rutas_imagenes=rutas_imagenes,
+            )
+        except Exception as e:
+            print(f"  ⚠ No se pudo persistir la corrección: {e}")
+
+    def capturar_y_clasificar(self, extractor, tm_classifier=None, delay=2,
+                              num_capturas=NUM_CAPTURAS_DEFAULT,
+                              intervalo_capturas=INTERVALO_CAPTURAS_DEFAULT):
+        """Para Raspberry Pi + sensor ultrasónico. Usa el mismo voto mayoritario que la demo (A5)."""
         if not self.cap or not self.cap.isOpened():
             self.iniciar()
         print(f"  ⏳ Capturando en {delay} segundos...")
         time.sleep(delay)
-        ruta = self.capturar_foto()
-        return self._analizar(extractor, ruta, tm_classifier=tm_classifier)
+        rutas = self.capturar_rafaga(n=num_capturas, intervalo=intervalo_capturas)
+        return self._analizar_multiple(extractor, rutas, tm_classifier=tm_classifier)
 
     def detener(self):
         if self.cap:

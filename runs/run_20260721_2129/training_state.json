@@ -1,0 +1,16 @@
+{
+  "stats_dataset": {
+    "train": {
+      "plastico": 13258,
+      "vidrio": 13043
+    },
+    "val": {
+      "plastico": 2343,
+      "vidrio": 2304
+    }
+  },
+  "fase1_epoch": 7,
+  "best_val_fase1": 0.9012265801429749,
+  "fase2_epoch": 10,
+  "best_val_fase2": 0.9842909574508667
+}

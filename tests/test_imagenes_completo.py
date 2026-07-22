@@ -42,6 +42,7 @@ IMAGENES = [
     ("images/prueba14.jpeg", "Coca Cola plástico",              "PLASTICO"),
     ("images/prueba15.jpeg", "Vaso café/chocolate plástico",    "PLASTICO"),
     ("images/prueba16.jpeg", "Fue Tea plástico",                "PLASTICO"),
+    ("images/prueba17.jpeg", "Gatorade Perform 473ml vidrio — caso difícil (tapa/brillo ambiguos, TM y Claude fallaron 20/jul)", "VIDRIO"),
 ]
 
 def clasificar_imagen(ruta, clf, extractor):

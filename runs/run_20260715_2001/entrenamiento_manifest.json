@@ -1,0 +1,48 @@
+{
+  "run_id": "run_20260715_2001",
+  "accuracy": 0.9846951365470886,
+  "loss": 0.06761731952428818,
+  "best_val_fase1": 0.9118736386299133,
+  "best_val_fase2": 0.9846951365470886,
+  "stats_dataset": {
+    "train": {
+      "plastico": 11550,
+      "vidrio": 11381
+    },
+    "val": {
+      "plastico": 2041,
+      "vidrio": 2010
+    }
+  },
+  "class_weight": {
+    "0": 0.9926839826839827,
+    "1": 1.007424655126966
+  },
+  "confusion_matrix": [
+    [
+      2009,
+      32
+    ],
+    [
+      30,
+      1980
+    ]
+  ],
+  "metricas_por_clase": {
+    "plastico": {
+      "precision": 0.9852869053457577,
+      "recall": 0.9843214110730034,
+      "f1": 0.9848039215686275
+    },
+    "vidrio": {
+      "precision": 0.9840954274353877,
+      "recall": 0.9850746268656716,
+      "f1": 0.9845847836897066
+    }
+  },
+  "clases": [
+    "plastico",
+    "vidrio"
+  ],
+  "entorno": "local"
+}
