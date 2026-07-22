@@ -327,6 +327,24 @@ class MetaRuleEngine:
             })
         ))
 
+        # ── MR18: Gatorade + brillo nítido → priorizar vidrio ──────────────
+        # En cámara la API a menudo marca rosca_plastico en Gatorade de vidrio;
+        # el brillo nítido del cuerpo es la señal más fiable de material.
+        self.meta_reglas.append(MetaRule(
+            nombre="MR18",
+            prioridad=10,
+            descripcion="Gatorade con brillo nítido → priorizar VIDRIO (tapa puede estar mal leída)",
+            condicion=lambda hechos, ctx: (
+                hechos.get("objeto_reconocido") == "botella_gatorade" and
+                hechos.get("brillo") == "alto_nitido"
+            ),
+            accion=lambda hechos, ctx: ctx.update({
+                "priorizar_categoria": "VIDRIO",
+                "factor_prioridad": 1.12,
+                "nota": "MR18: Gatorade + brillo nítido → VIDRIO priorizado (tapa puede ser twist-off mal leída)"
+            })
+        ))
+
         # Ordenar por prioridad descendente
         self.meta_reglas.sort(key=lambda mr: mr.prioridad, reverse=True)
 

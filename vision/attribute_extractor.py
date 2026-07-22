@@ -97,13 +97,13 @@ ATRIBUTOS REQUERIDOS (usa EXACTAMENTE estos valores):
     - transparencia = ninguna (las latas NO son transparentes)
 
   DIFERENCIA CRÍTICA VIDRIO vs PLÁSTICO (botellas):
-  - VIDRIO: brillo MUY nítido y profundo (como espejo), sonido visual "duro", tapa = corona_metalica | twist_off_metalica | tapa_ancha_metalica
-  - PLÁSTICO PET: brillo difuso o moderado, tapa de rosca PLÁSTICA visible (rosca_plastico)
+  - VIDRIO: brillo MUY nítido y profundo (como espejo), cuerpo más LISO (pocos relieves moldeados), tapa = corona_metalica | twist_off_metalica | tapa_ancha_metalica
+  - PLÁSTICO PET: brillo difuso o moderado, a menudo con RELIEVES / estrías / agarre moldeado en el cuerpo, tapa de rosca PLÁSTICA visible (rosca_plastico) — más GRUESA, alta y con estrías verticales
   - Si el envase es transparente con reflejo nítido fuerte → probable VIDRIO → tapa metálica, NO rosca_plastico
   - botella_cerveza_vidrio | botella_jugo_vidrio | frasco_vidrio | vaso_vidrio para envases de vidrio
   - Si el clasificador rápido dijo "vidrio", confía en el material aunque la forma parezca botella de agua
   - TAPA METÁLICA DE COLOR ≠ rosca_plastico: Gatorade, jugos y bebidas de café en VIDRIO usan tapa twist-off METÁLICA delgada pintada (naranja, roja, dorada). Una tapa plana, delgada y de borde liso es twist_off_metalica aunque sea de color; la rosca_plastico es más GRUESA, alta y con estrías verticales
-  - botella_gatorade existe en VIDRIO (473ml, cuello corto, hombros redondeados, tapa metálica de color) y en PLÁSTICO (boca ancha, tapa rosca plástica gruesa). Decide el material por el envase y la tapa, NO por la marca
+  - botella_gatorade existe en VIDRIO (473ml, cuello corto, hombros redondeados, tapa metálica DELGADA de color, cuerpo liso con brillo nítido) y en PLÁSTICO (boca ancha, tapa rosca plástica GRUESA con estrías, a menudo naranja/roja/azul, cuerpo con más relieve/diseño moldeado, brillo DIFUSO). Decide el material por brillo + relieve + tapa, NO por la marca. Si brillo NÍTIDO → probable VIDRIO aunque dudes de la tapa. Si brillo DIFUSO y tapa ALTA/GRUESA → rosca_plastico aunque sea de color. NO marques twist_off_metalica solo por el color de la tapa
 
   OBJETOS NO PERMITIDOS (no plástico ni vidrio):
   - lata, papel_servilleta, carton, tetra_pak, cascara_fruta, restos_comida → usar objeto_reconocido correcto

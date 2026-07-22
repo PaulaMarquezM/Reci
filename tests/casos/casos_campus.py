@@ -203,6 +203,26 @@ CASOS_CAMPUS = [
         }
     },
     {
+        "id": "TC17c2", "nombre": "Gatorade vidrio — API mal lee tapa como rosca pero brillo nítido",
+        "esperado": "VIDRIO", "categoria": "CAMPUS_VIDRIO",
+        "atributos": {
+            "objeto_reconocido": "botella_gatorade", "confianza_ml": "alta",
+            "transparencia": "alta", "color": "transparente",
+            "forma": "cilindrica_estandar", "brillo": "alto_nitido",
+            "tapa": "rosca_plastico", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
+    {
+        "id": "TC17c3", "nombre": "Gatorade PET — brillo difuso + rosca (no confundir con vidrio)",
+        "esperado": "PLASTICO", "categoria": "CAMPUS_PLASTICO",
+        "atributos": {
+            "objeto_reconocido": "botella_gatorade", "confianza_ml": "alta",
+            "transparencia": "alta", "color": "transparente",
+            "forma": "cilindrica_estandar", "brillo": "medio_difuso",
+            "tapa": "rosca_plastico", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
+    {
         "id": "TC17d", "nombre": "Colgate Plax — API omite tapa y marca brillo nítido",
         "esperado": "PLASTICO", "categoria": "CAMPUS_PLASTICO",
         "atributos": {

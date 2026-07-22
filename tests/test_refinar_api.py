@@ -196,6 +196,40 @@ def test_corregir_gatorade_tapa_plastica_mal_leida():
     assert conclusion == "PLASTICO", conclusion
 
 
+def test_gatorade_vidrio_tapa_rosca_mal_leida():
+    """Cámara: Gatorade vidrio con brillo nítido pero API puso rosca_plastico."""
+    from vision.visual_heuristics import _corregir_gatorade_ambiguo
+
+    attrs = {
+        "objeto_reconocido": "botella_gatorade",
+        "confianza_ml": "alta",
+        "transparencia": "alta",
+        "color": "transparente",
+        "forma": "cilindrica_estandar",
+        "brillo": "alto_nitido",
+        "tapa": "rosca_plastico",
+        "textura": "lisa_brillante",
+        "rigidez": "rigido",
+    }
+    # SE solo (como en cámara cuando TM también duda)
+    engine = InferenceEngine()
+    engine.cargar_hechos(attrs)
+    conclusion, _, _ = engine.ejecutar()
+    assert conclusion == "VIDRIO", conclusion
+
+    # Heurística corrige tapa si TM no es plástico muy fuerte
+    out = _corregir_gatorade_ambiguo(attrs, clase_tm="vidrio", prob_tm=0.58)
+    assert out["tapa"] == "twist_off_metalica", out
+
+    # TM plástico muy fuerte → no forzar tapa (deja que SE/R19_M6 decidan)
+    out_pet = _corregir_gatorade_ambiguo(attrs, clase_tm="plastico", prob_tm=0.97)
+    assert out_pet["tapa"] == "rosca_plastico", out_pet
+    engine2 = InferenceEngine()
+    engine2.cargar_hechos(out_pet)
+    conclusion2, _, _ = engine2.ejecutar()
+    assert conclusion2 == "VIDRIO", conclusion2  # R19_M6 + MR18 ganan igual
+
+
 def test_enjuague_sin_tapa_no_va_a_vidrio():
     """Colgate Plax tipado + sin_tapa + brillo nítido → PLASTICO (prueba5)."""
     from vision.visual_heuristics import _corregir_enjuague_y_atomizador
@@ -313,7 +347,8 @@ if __name__ == "__main__":
     test_a4_pet_no_flip_con_reflejo_ambar_camara()
     test_a4_gaseosa_pet_no_flip_con_reflejo_ambar()
     test_corregir_gatorade_tapa_plastica_mal_leida()
+    test_gatorade_vidrio_tapa_rosca_mal_leida()
     test_enjuague_sin_tapa_no_va_a_vidrio()
     test_atomizador_y_vaso_espuma()
     test_a4_fallback_tm_vidrio_debil_gatorade_pet()
-    print("✅ test_refinar_api: 11/11 OK")
+    print("✅ test_refinar_api: 12/12 OK")

@@ -146,17 +146,18 @@ class KnowledgeBase:
             # Cola Gallito y Gatorade
             Rule("R19_K", {"objeto_reconocido": "botella_cola_gallito", "confianza_ml": "alta"},  "PLASTICO", 0.98, "Cola Gallito identificada — gaseosa ecuatoriana en plástico, similar a Coca-Cola"),
             Rule("R19_L", {"objeto_reconocido": "botella_cola_gallito", "confianza_ml": "media"}, "PLASTICO", 0.91, "Probable Cola Gallito con confianza media — gaseosa ecuatoriana"),
-            # A3 — Gatorade decidido por MATERIAL físico, no solo por marca.
-            # Tapa rosca plástica → PET deportivo (plástico). Tapa metálica +
-            # brillo nítido → el envase es realmente vidrio (evita el falso
-            # PLASTICO "por marca" que fallaba en prueba12/prueba10).
-            Rule("R19_M",  {"objeto_reconocido": "botella_gatorade", "confianza_ml": "alta",  "tapa": "rosca_plastico"}, "PLASTICO", 0.98, "Gatorade con tapa rosca plástica y alta confianza → PET deportivo (plástico)"),
-            Rule("R19_N",  {"objeto_reconocido": "botella_gatorade", "confianza_ml": "media", "tapa": "rosca_plastico"}, "PLASTICO", 0.91, "Probable Gatorade con tapa rosca plástica → plástico"),
+            # A3 — Gatorade por MATERIAL. Brillo nítido manda sobre tapa mal leída.
+            # R19_M/N solo con brillo difuso (PET). Si alto_nitido + "rosca" → vidrio (R19_M6).
+            Rule("R19_M",  {"objeto_reconocido": "botella_gatorade", "confianza_ml": "alta",  "tapa": "rosca_plastico", "brillo": "medio_difuso"}, "PLASTICO", 0.98, "Gatorade PET: tapa rosca + brillo difuso + alta confianza → plástico"),
+            Rule("R19_N",  {"objeto_reconocido": "botella_gatorade", "confianza_ml": "media", "tapa": "rosca_plastico", "brillo": "medio_difuso"}, "PLASTICO", 0.91, "Gatorade PET: tapa rosca + brillo difuso + confianza media → plástico"),
             Rule("R19_M2", {"objeto_reconocido": "botella_gatorade", "tapa": "twist_off_metalica",  "brillo": "alto_nitido"}, "VIDRIO", 0.95, "Envase tipo Gatorade con tapa twist-off metálica y brillo nítido → es vidrio, no plástico"),
             Rule("R19_M3", {"objeto_reconocido": "botella_gatorade", "tapa": "tapa_ancha_metalica", "brillo": "alto_nitido"}, "VIDRIO", 0.95, "Envase tipo Gatorade con tapa metálica ancha y brillo nítido → es vidrio"),
             Rule("R19_M4", {"objeto_reconocido": "botella_gatorade", "brillo": "medio_difuso", "tapa": "rosca_plastico"}, "PLASTICO", 0.90, "Gatorade con brillo medio difuso y tapa rosca plástica → PET deportivo"),
+            # API confunde tapa twist-off de color con rosca_plastico; brillo nítido = vidrio
+            Rule("R19_M6", {"objeto_reconocido": "botella_gatorade", "brillo": "alto_nitido", "tapa": "rosca_plastico"}, "VIDRIO", 0.97, "Gatorade con brillo nítido: tapa 'rosca' suele ser twist-off metálica mal leída → vidrio"),
+            Rule("R19_M7", {"objeto_reconocido": "botella_gatorade", "brillo": "alto_nitido", "tapa": "sin_tapa"}, "VIDRIO", 0.94, "Gatorade con brillo nítido sin tapa visible → probable vidrio 473ml"),
             # Las APIs confunden tapa plástica de color con metálica. Brillo difuso
-            # + transparencia alta = PET; el vidrio real usa R19_M2/M3 (alto_nitido).
+            # + transparencia alta = PET; el vidrio real usa R19_M2/M3/M6 (alto_nitido).
             Rule("R19_M5", {"objeto_reconocido": "botella_gatorade", "tapa": "twist_off_metalica", "brillo": "medio_difuso", "transparencia": "alta"}, "PLASTICO", 0.92, "Gatorade transparente con brillo difuso: tapa 'metálica' suele ser plástica de color mal leída → PET"),
             Rule("R19_M5b", {"objeto_reconocido": "botella_gatorade", "tapa": "twist_off_metalica", "brillo": "medio_difuso", "transparencia": "media"}, "VIDRIO", 0.90, "Gatorade semitransparente con tapa twist-off y brillo difuso → probable vidrio 473ml"),
             Rule("R19_M5c", {"objeto_reconocido": "botella_gatorade", "tapa": "twist_off_metalica", "brillo": "medio_difuso", "transparencia": "baja"}, "VIDRIO", 0.91, "Gatorade poco transparente con tapa twist-off → vidrio"),
