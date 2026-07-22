@@ -307,6 +307,26 @@ class MetaRuleEngine:
             })
         ))
 
+        # ── MR17: Enjuague bucal / atomizador → nunca vidrio ──────────────
+        # Colgate Plax, Listerine, sprays y body splash son PET. La API a veces
+        # omite la tapa o marca brillo nítido y las reglas de vidrio sin tapa
+        # (R49/R163) les ganan: excluir VIDRIO cuando el objeto ya está tipado.
+        self.meta_reglas.append(MetaRule(
+            nombre="MR17",
+            prioridad=10,
+            descripcion="Enjuague bucal o atomizador tipados → excluir VIDRIO (siempre plástico)",
+            condicion=lambda hechos, ctx: hechos.get("objeto_reconocido") in (
+                "botella_enjuague_bucal", "botella_atomizador"
+            ),
+            accion=lambda hechos, ctx: ctx.update({
+                "excluir_categorias": ctx.get("excluir_categorias", []) + ["VIDRIO", "LATA"],
+                "sesgo_plastico": ctx.get("sesgo_plastico", 0) + 0.10,
+                "priorizar_categoria": "PLASTICO",
+                "factor_prioridad": 1.10,
+                "nota": "MR17: Enjuague/atomizador tipado → VIDRIO/LATA excluidos, sesgo PLASTICO"
+            })
+        ))
+
         # Ordenar por prioridad descendente
         self.meta_reglas.sort(key=lambda mr: mr.prioridad, reverse=True)
 

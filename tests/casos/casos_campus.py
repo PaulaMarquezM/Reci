@@ -183,6 +183,56 @@ CASOS_CAMPUS = [
         }
     },
     {
+        "id": "TC17b", "nombre": "Gatorade PET — API confunde tapa plástica de color con metálica",
+        "esperado": "PLASTICO", "categoria": "CAMPUS_PLASTICO",
+        "atributos": {
+            "objeto_reconocido": "botella_gatorade", "confianza_ml": "media",
+            "transparencia": "alta", "color": "transparente",
+            "forma": "cilindrica_estandar", "brillo": "medio_difuso",
+            "tapa": "twist_off_metalica", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
+    {
+        "id": "TC17c", "nombre": "Gatorade vidrio 473ml — tapa metálica real con brillo nítido",
+        "esperado": "VIDRIO", "categoria": "CAMPUS_VIDRIO",
+        "atributos": {
+            "objeto_reconocido": "botella_gatorade", "confianza_ml": "alta",
+            "transparencia": "media", "color": "variado_vivo",
+            "forma": "cilindrica_ancha", "brillo": "alto_nitido",
+            "tapa": "twist_off_metalica", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
+    {
+        "id": "TC17d", "nombre": "Colgate Plax — API omite tapa y marca brillo nítido",
+        "esperado": "PLASTICO", "categoria": "CAMPUS_PLASTICO",
+        "atributos": {
+            "objeto_reconocido": "botella_enjuague_bucal", "confianza_ml": "alta",
+            "transparencia": "alta", "color": "variado_vivo",
+            "forma": "cilindrica_estandar", "brillo": "alto_nitido",
+            "tapa": "sin_tapa", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
+    {
+        "id": "TC17e", "nombre": "Atomizador / body splash plástico transparente",
+        "esperado": "PLASTICO", "categoria": "CAMPUS_PLASTICO",
+        "atributos": {
+            "objeto_reconocido": "botella_atomizador", "confianza_ml": "alta",
+            "transparencia": "alta", "color": "transparente",
+            "forma": "cilindrica_estandar", "brillo": "medio_difuso",
+            "tapa": "rosca_plastico", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
+    {
+        "id": "TC17f", "nombre": "Vaso espuma blanco mal etiquetado como cartón",
+        "esperado": "PLASTICO", "categoria": "CAMPUS_PLASTICO",
+        "atributos": {
+            "objeto_reconocido": "vaso_plastico_blanco", "confianza_ml": "alta",
+            "transparencia": "ninguna", "color": "blanco_opaco",
+            "forma": "conica", "brillo": "bajo",
+            "tapa": "sin_tapa", "textura": "lisa_sin_brillo", "rigidez": "rigido"
+        }
+    },
+    {
         "id": "TC18", "nombre": "Cola Gallito gaseosa ecuatoriana plástico",
         "esperado": "PLASTICO", "categoria": "CAMPUS_PLASTICO",
         "atributos": {

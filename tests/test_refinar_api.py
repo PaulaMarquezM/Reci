@@ -167,30 +167,141 @@ def test_a4_gaseosa_pet_no_flip_con_reflejo_ambar():
     assert "vidrio" not in out["objeto_reconocido"]
 
 
-def test_a4_fallback_tm_vidrio_debil_gatorade_pet():
-    """Fallback: TM vidrio <70% sin brillo nítido → Gatorade PET (prueba12 real)."""
-    ruta = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "images", "prueba12.jpeg",
-    )
-    if not os.path.exists(ruta):
-        return
+def test_corregir_gatorade_tapa_plastica_mal_leida():
+    """API marca tapa metálica en Gatorade PET (brillo difuso, TM vidrio débil)."""
+    from vision.visual_heuristics import _corregir_gatorade_ambiguo
 
-    import cv2
-    from vision.tm_classifier import TeachableMachineClassifier
+    attrs = {
+        "objeto_reconocido": "botella_gatorade",
+        "confianza_ml": "media",
+        "transparencia": "alta",
+        "color": "transparente",
+        "forma": "cilindrica_estandar",
+        "brillo": "medio_difuso",
+        "tapa": "twist_off_metalica",
+        "textura": "lisa_brillante",
+        "rigidez": "rigido",
+    }
+    # Misma situación que prueba12: TM vidrio ~76%
+    out = _corregir_gatorade_ambiguo(attrs, clase_tm="vidrio", prob_tm=0.765)
+    assert out["tapa"] == "rosca_plastico", out
 
-    img = cv2.imread(ruta)
-    with __import__("contextlib").redirect_stdout(open(os.devnull, "w")):
-        clf = TeachableMachineClassifier()
-        out = clf.analizar_imagen(ruta)
-
-    assert out["objeto_reconocido"] in ("botella_gatorade", "botella_agua"), out
-    assert out.get("tapa") == "rosca_plastico", out
+    # TM vidrio muy seguro → no corregir (posible vidrio real)
+    out_fuerte = _corregir_gatorade_ambiguo(attrs, clase_tm="vidrio", prob_tm=0.95)
+    assert out_fuerte["tapa"] == "twist_off_metalica", out_fuerte
 
     engine = InferenceEngine()
     engine.cargar_hechos(out)
     conclusion, _, _ = engine.ejecutar()
     assert conclusion == "PLASTICO", conclusion
+
+
+def test_enjuague_sin_tapa_no_va_a_vidrio():
+    """Colgate Plax tipado + sin_tapa + brillo nítido → PLASTICO (prueba5)."""
+    from vision.visual_heuristics import _corregir_enjuague_y_atomizador
+
+    attrs = {
+        "objeto_reconocido": "botella_enjuague_bucal",
+        "confianza_ml": "alta",
+        "transparencia": "alta",
+        "color": "variado_vivo",
+        "forma": "cilindrica_estandar",
+        "brillo": "alto_nitido",
+        "tapa": "sin_tapa",
+        "textura": "lisa_brillante",
+        "rigidez": "rigido",
+    }
+    corregidos = _corregir_enjuague_y_atomizador(attrs)
+    assert corregidos["tapa"] == "rosca_plastico", corregidos
+
+    engine = InferenceEngine()
+    engine.cargar_hechos(attrs)  # sin corregir: MR17 + R19_F3 deben bastar
+    conclusion, _, _ = engine.ejecutar()
+    assert conclusion == "PLASTICO", conclusion
+
+    engine2 = InferenceEngine()
+    engine2.cargar_hechos(corregidos)
+    conclusion2, _, _ = engine2.ejecutar()
+    assert conclusion2 == "PLASTICO", conclusion2
+
+
+def test_atomizador_y_vaso_espuma():
+    from vision.visual_heuristics import _corregir_vaso_espuma_como_carton
+
+    engine = InferenceEngine()
+    engine.cargar_hechos({
+        "objeto_reconocido": "botella_atomizador",
+        "confianza_ml": "alta",
+        "transparencia": "alta",
+        "color": "transparente",
+        "forma": "cilindrica_estandar",
+        "brillo": "medio_difuso",
+        "tapa": "sin_tapa",
+        "textura": "lisa_brillante",
+        "rigidez": "rigido",
+    })
+    conclusion, _, _ = engine.ejecutar()
+    assert conclusion == "PLASTICO", conclusion
+
+    carton_mal = {
+        "objeto_reconocido": "vaso_carton",
+        "confianza_ml": "alta",
+        "transparencia": "ninguna",
+        "color": "blanco_opaco",
+        "forma": "conica",
+        "brillo": "bajo",
+        "tapa": "sin_tapa",
+        "textura": "lisa_sin_brillo",
+        "rigidez": "rigido",
+    }
+    out = _corregir_vaso_espuma_como_carton(carton_mal)
+    assert out["objeto_reconocido"] == "vaso_plastico_blanco", out
+    engine2 = InferenceEngine()
+    engine2.cargar_hechos(out)
+    conclusion2, _, _ = engine2.ejecutar()
+    assert conclusion2 == "PLASTICO", conclusion2
+
+
+def test_a4_fallback_tm_vidrio_debil_gatorade_pet():
+    """
+    Caso prueba12: API/heurística con Gatorade + tapa mal leída + TM vidrio débil
+    debe terminar en PLASTICO. No depende del MAPA_CLASES del TM (cambia con el .tflite).
+    """
+    from vision.visual_heuristics import _corregir_gatorade_ambiguo, refinar_atributos_api
+
+    # Atributos típicos que devolvía OpenAI/Claude en prueba12
+    attrs = {
+        "objeto_reconocido": "botella_gatorade",
+        "confianza_ml": "media",
+        "transparencia": "alta",
+        "color": "transparente",
+        "forma": "cilindrica_estandar",
+        "brillo": "medio_difuso",
+        "tapa": "twist_off_metalica",
+        "textura": "lisa_brillante",
+        "rigidez": "rigido",
+    }
+    corregidos = _corregir_gatorade_ambiguo(attrs, clase_tm="vidrio", prob_tm=0.765)
+    assert corregidos["tapa"] == "rosca_plastico", corregidos
+    assert corregidos["objeto_reconocido"] == "botella_gatorade", corregidos
+
+    # También vía refinar_atributos_api (flujo post-API real)
+    img = _img_amber_specular_fondo_calido()
+    out = refinar_atributos_api(
+        attrs, img, clase_tm="vidrio", prob_tm=0.765, prob_vidrio=0.765,
+    )
+    assert out["tapa"] == "rosca_plastico", out
+
+    engine = InferenceEngine()
+    engine.cargar_hechos(out)
+    conclusion, _, _ = engine.ejecutar()
+    assert conclusion == "PLASTICO", conclusion
+
+    # Sin corrección: SE también clasifica PET si transparencia=alta (R19_M5)
+    engine2 = InferenceEngine()
+    engine2.cargar_hechos(attrs)
+    conclusion2, _, _ = engine2.ejecutar()
+    assert conclusion2 == "PLASTICO", conclusion2
 
 
 if __name__ == "__main__":
@@ -201,5 +312,8 @@ if __name__ == "__main__":
     test_tm_seguro_plastico_no_flip_vidrio()
     test_a4_pet_no_flip_con_reflejo_ambar_camara()
     test_a4_gaseosa_pet_no_flip_con_reflejo_ambar()
+    test_corregir_gatorade_tapa_plastica_mal_leida()
+    test_enjuague_sin_tapa_no_va_a_vidrio()
+    test_atomizador_y_vaso_espuma()
     test_a4_fallback_tm_vidrio_debil_gatorade_pet()
-    print("✅ test_refinar_api: 8/8 OK")
+    print("✅ test_refinar_api: 11/11 OK")

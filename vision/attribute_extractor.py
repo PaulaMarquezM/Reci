@@ -4,10 +4,10 @@
 #
 # FLUJO PRINCIPAL (analizar_y_clasificar_hibrido):
 #   1. TM corre primero (~0.1s) → da su voto como contexto
-#   2. Claude o Gemini analiza la imagen (~2s) con ese contexto
+#   2. Claude, OpenAI o Gemini analiza la imagen (~2s) con ese contexto
 #   3. Sistema experto toma la decisión final
 #
-# Proveedor configurable con VISION_API=claude|gemini en .env
+# Proveedor configurable con VISION_API=openai|claude|gemini en .env
 
 import os
 import json
@@ -29,7 +29,7 @@ class AttributeExtractor:
 
     Flujo recomendado: analizar_y_clasificar_hibrido(ruta, clf=tm_classifier)
     - TM actúa como contexto inicial para la API de visión
-    - Claude o Gemini hace el análisis visual definitivo
+    - Claude, OpenAI o Gemini hace el análisis visual definitivo
     - El sistema experto decide con los 9 atributos extraídos
     """
 
@@ -39,6 +39,7 @@ class AttributeExtractor:
     )
     CLAUDE_URL = "https://api.anthropic.com/v1/messages"
     CLAUDE_VERSION = "2023-06-01"
+    OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
     GEMINI_MODELS = [
         "gemini-2.5-flash",
@@ -48,6 +49,10 @@ class AttributeExtractor:
     CLAUDE_MODELS = [
         "claude-haiku-4-5",
         "claude-sonnet-4-6",
+    ]
+    OPENAI_MODELS = [
+        "gpt-4o-mini",
+        "gpt-4o",
     ]
 
     # Le indica a Gemini que devuelva JSON puro, sin markdown ni explicaciones.
@@ -64,7 +69,7 @@ Tu tarea es analizar la imagen y extraer exactamente estos atributos visuales de
 
 ATRIBUTOS REQUERIDOS (usa EXACTAMENTE estos valores):
 
-- objeto_reconocido: botella_agua | botella_gaseosa | botella_energizante | botella_alcoholica_plastico | vaso_plastico | vaso_carton | yogur_plastico | funda_plastico | botella_mocachino | botella_cerveza_vidrio | botella_salsa_vidrio | frasco_vidrio | botella_jugo_vidrio | cascara_fruta | restos_comida | papel_servilleta | carton | lata | botella_fioravanti | botella_aceite_plastico | botella_jugo_plastico | tetra_pak | botella_pony_malta | botella_enjuague_bucal | botella_cola_gallito | botella_gatorade | vaso_plastico_blanco | vaso_vidrio | plato_plastico | recipiente_plastico | cubierto_plastico | snack_plastico | pitillo | desconocido
+- objeto_reconocido: botella_agua | botella_gaseosa | botella_energizante | botella_alcoholica_plastico | vaso_plastico | vaso_carton | yogur_plastico | funda_plastico | botella_mocachino | botella_cerveza_vidrio | botella_salsa_vidrio | frasco_vidrio | botella_jugo_vidrio | cascara_fruta | restos_comida | papel_servilleta | carton | lata | botella_fioravanti | botella_aceite_plastico | botella_jugo_plastico | tetra_pak | botella_pony_malta | botella_enjuague_bucal | botella_cola_gallito | botella_gatorade | botella_atomizador | vaso_plastico_blanco | vaso_vidrio | plato_plastico | recipiente_plastico | cubierto_plastico | snack_plastico | pitillo | desconocido
 
   Guía rápida:
   - botella_fioravanti: gaseosa ecuatoriana, botella PET oscura naranja/marrón con etiqueta de gallo
@@ -72,14 +77,15 @@ ATRIBUTOS REQUERIDOS (usa EXACTAMENTE estos valores):
   - botella_jugo_plastico: jugo en plástico (Pulp, Tampico, Frugos), etiqueta colorida, opaca
   - tetra_pak: caja de cartón para jugo/leche (Del Valle, Sunny, Natura), rectangular, NO es vidrio ni plástico
   - botella_pony_malta: malta ecuatoriana en vidrio ámbar, similar a cerveza pero con tapa twist-off
-  - botella_enjuague_bucal: Colgate Plax, Listerine u otro enjuague en plástico
+  - botella_enjuague_bucal: Colgate Plax, Listerine u otro enjuague en plástico — SIEMPRE tiene tapa de rosca plástica blanca o de color (tapa = rosca_plastico). NUNCA es vidrio. Si ves la marca Colgate/Plax/Listerine → botella_enjuague_bucal + rosca_plastico
+  - botella_atomizador: spray, atomizador, body splash, perfume o limpiador en botella plástica con GATILLO o boquilla spray (blanco/verde/dorado). Incluye Bibis Fragrance, sprays de agua, ambientadores. Es PLÁSTICO — no uses desconocido
   - botella_cola_gallito: gaseosa ecuatoriana Cola Gallito, PET transparente con etiqueta colorida tipo Coca-Cola
   - botella_gatorade: bebida deportiva Gatorade, PET con boca más ancha que gaseosa estándar
-  - vaso_plastico_blanco: vaso desechable de plástico BLANCO OPACO (no transparente) — típico de cafeterías para café, chocolate, té caliente; forma cónica, sin tapa o con tapa domo
+  - vaso_plastico_blanco: vaso desechable de plástico BLANCO OPACO (no transparente) — típico de cafeterías para café, chocolate, té caliente; forma cónica, sin tapa o con tapa domo. INCLUYE vasos de ESPUMA / unicel / Styrofoam (superficie mate granulosa blanca) — eso es plástico, NO cartón
   - vaso_vidrio: vaso o tumbler de VIDRIO reutilizable — transparente con brillo muy nítido (más que plástico), sin cuello de botella, generalmente ancho o cónico
   - plato_plastico: plato desechable de plástico — blanco opaco, plano, RÍGIDO; distinguirlo de servilleta (que es flexible y fibrosa)
   - recipiente_plastico: bowl o contenedor de comida de plástico — blanco opaco, sin cuello de botella, más ancho que alto; usado para sopas, ensaladas, porciones
-  - papel_servilleta: hoja de papel, servilleta, papel impreso — NO es plástico ni vidrio
+  - papel_servilleta: hoja de papel, servilleta, papel impreso — NO es plástico ni vidrio. Si hay papel ENCIMA de un vaso, reporta el objeto PRINCIPAL visible (si el papel domina el encuadre → papel_servilleta; si el vaso domina → vaso_plastico / vaso_plastico_blanco)
   - carton: caja de cartón, cartulina — NO es plástico ni vidrio
   - lata: envase metálico de aluminio — NO va en ningún compartimento de RECI
     SEÑALES DE LATA (muy importante):
@@ -97,25 +103,15 @@ ATRIBUTOS REQUERIDOS (usa EXACTAMENTE estos valores):
   - botella_cerveza_vidrio | botella_jugo_vidrio | frasco_vidrio | vaso_vidrio para envases de vidrio
   - Si el clasificador rápido dijo "vidrio", confía en el material aunque la forma parezca botella de agua
   - TAPA METÁLICA DE COLOR ≠ rosca_plastico: Gatorade, jugos y bebidas de café en VIDRIO usan tapa twist-off METÁLICA delgada pintada (naranja, roja, dorada). Una tapa plana, delgada y de borde liso es twist_off_metalica aunque sea de color; la rosca_plastico es más GRUESA, alta y con estrías verticales
-  - botella_gatorade existe en VIDRIO (473ml, cuello corto, hombros redondeados, tapa metálica de color) y en PLÁSTICO (500ml/591ml/1 litro, boca ancha, tapa rosca plástica gruesa). NO confíes solo en la tapa o el brillo para decidir el material de Gatorade — en fotos borrosas o de cerca se confunden fácilmente. Usa estas dos señales, en este orden de prioridad:
-    1) TEXTO DE VOLUMEN IMPRESO en la etiqueta (ej. "473 mL", "500 ml", "591ml", "1 LITRO"): si dice 473ml → VIDRIO; si dice 500ml, 591ml, 1 litro o cualquier otro volumen → PLÁSTICO. Este es el dato MÁS confiable, léelo con cuidado antes de decidir.
-    2) TEXTURA DEL CUERPO si no puedes leer el volumen: el Gatorade de PLÁSTICO tiene nervaduras/canales de agarre (grip) horizontales o verticales visibles en el cuerpo (textura = rugosa); el de VIDRIO es completamente liso sin nervaduras (textura = lisa_brillante)
-    Solo si ninguna de las dos señales es clara, decide por tapa y brillo como último recurso
-
-  ENVASE SOSTENIDO CON LA MANO, ACOSTADO O A UN ÁNGULO (la tapa queda tapada por los dedos o poco visible):
-  - NUNCA asumas tapa = rosca_plastico solo porque no puedes verla con claridad — eso sesga todo hacia PLÁSTICO por defecto y es un error común en fotos de mano/ángulo.
-  - Con la tapa oculta o dudosa, prioriza el CUERPO visible del envase en este orden:
-    1) Relieve/grabado en el propio material: letras, logos o marcas HUNDIDAS en el vidrio (siguen la curva del envase, mismo color que el vidrio, sin patrón repetitivo) → VIDRIO. Nervaduras de agarre REPETIDAS y uniformes con textura tipo goma → PLÁSTICO.
-    2) Brillo del cuerpo aunque esté acostado o en sombra: el vidrio conserva un reflejo especular duro y curvo (como espejo) incluso en ángulo; el PET tiene un brillo más plano y difuso.
-  - Si tras esto la tapa sigue sin verse, repórtala igual como tu mejor estimación, pero deja que el CUERPO (no la tapa) decida el material.
+  - botella_gatorade existe en VIDRIO (473ml, cuello corto, hombros redondeados, tapa metálica de color) y en PLÁSTICO (boca ancha, tapa rosca plástica gruesa). Decide el material por el envase y la tapa, NO por la marca
 
   OBJETOS NO PERMITIDOS (no plástico ni vidrio):
   - lata, papel_servilleta, carton, tetra_pak, cascara_fruta, restos_comida → usar objeto_reconocido correcto
   - Objetos de metal que no sean botella → lata o desconocido con confianza_ml = baja
 
   DIFERENCIAS CLAVE para objetos blancos:
-  - vaso_plastico_blanco: blanco opaco, CÓNICO o cilíndrico, brillo difuso (plástico), forma de vaso de cafetería
-  - vaso_carton vs vaso_plastico_blanco: NO te guíes por la impresión — los vasos de cafetería del campus con diseño impreso tipo kraft/café (palabras CHOCOLATE, CAPUCCINO, LATTE, ESPRESSO...) son de PLÁSTICO blanco → vaso_plastico_blanco. El cartón REAL muestra: costura lateral vertical visible donde se une el papel, textura fibrosa mate y borde superior sin brillo. Si el interior es blanco liso con leve brillo y no hay costura de papel → vaso_plastico_blanco
+  - vaso_plastico_blanco: blanco opaco, CÓNICO o cilíndrico, brillo difuso (plástico), forma de vaso de cafetería. También vasos de ESPUMA/unicel (mate, grano fino) → vaso_plastico_blanco, NUNCA vaso_carton
+  - vaso_carton vs vaso_plastico_blanco: NO te guíes solo por la impresión. Cartón REAL: costura lateral vertical donde se une el papel, textura FIBROSA, borde superior enrollado de papel sin brillo plástico. Espuma/Styrofoam blanca: grano mate uniforme SIN costura de papel → vaso_plastico_blanco. Los vasos de cafetería del campus con diseño impreso tipo kraft/café (CHOCOLATE, CAPUCCINO...) pueden ser plástico blanco o cartón: mira la costura y la textura
   - yogur_plastico: blanco opaco, CILÍNDRICO ANCHO (más gordo que un vaso), para yogur o lácteos
   - plato_plastico: blanco opaco, PLANO (rectangular o circular visto desde arriba), rígido
   - papel_servilleta: blanco opaco, PLANO pero FLEXIBLE y fibroso, textura diferente al plástico
@@ -123,6 +119,7 @@ ATRIBUTOS REQUERIDOS (usa EXACTAMENTE estos valores):
   - cubierto_plastico: tenedor, cuchara o cuchillo desechable — blanco opaco o transparente, forma IRREGULAR, rígido; NO confundir con vaso (vaso es cónico) ni plato (plato es plano)
   - snack_plastico: bolsa de snack (Doritos, chifles, chitos, papas Lay's) — FLEXIBLE, sellado, colores vivos o brillo metálico; distinguir de funda (funda no tiene sellado ni colores de marca)
   - pitillo: sorbete o pitillo — cilíndrico MUY DELGADO, mucho más estrecho que una botella, transparente o de colores, rígido o semirígido
+  - botella_atomizador vs desconocido: si ves gatillo spray, boquilla atomizadora o body splash/perfume en envase plástico → botella_atomizador (NO desconocido)
 
 - confianza_ml: alta | media | baja
 
@@ -169,11 +166,7 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
         config = resolver_config_vision()
         self._config_vision = config
         self.vision_api = config["vision_api"]
-        self.api_key = (
-            os.environ.get("ANTHROPIC_API_KEY", "")
-            if self.vision_api == "claude"
-            else os.environ.get("GEMINI_API_KEY", "")
-        )
+        self.api_key = config.get("api_key", "")
         self.modelos = config["modelos"]
         self.modelo_primario = config["modelo_primario"]
 
@@ -192,7 +185,11 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
 
     @property
     def _provider_label(self) -> str:
-        return "Claude" if self.vision_api == "claude" else "Gemini"
+        return {
+            "claude": "Claude",
+            "gemini": "Gemini",
+            "openai": "OpenAI",
+        }.get(self.vision_api, self.vision_api)
 
     @staticmethod
     def _parsear_json(texto: str) -> dict:
@@ -336,10 +333,77 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
             raise ultimo_error
         raise RuntimeError("Claude: sin respuesta de ningún modelo")
 
+    def _llamar_openai(self, payload: dict, max_reintentos: int = 3) -> dict:
+        """Llama a la API de OpenAI (Chat Completions + visión) con reintentos."""
+        if not self._vision_activo:
+            raise RuntimeError(self._vision_error or "API de visión no disponible en esta sesión")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type":  "application/json",
+        }
+
+        ultimo_error = None
+
+        for modelo in self.modelos:
+            body = {**payload, "model": modelo}
+
+            for intento in range(max_reintentos + 1):
+                try:
+                    response = httpx.post(
+                        self.OPENAI_URL, headers=headers, json=body, timeout=60.0
+                    )
+                    response.raise_for_status()
+                    return response.json()
+                except httpx.HTTPStatusError as e:
+                    ultimo_error = e
+                    status = e.response.status_code
+                    if status == 429 and intento < max_reintentos:
+                        espera = 5.0 * (intento + 1)
+                        logger.warning(
+                            "OpenAI %s HTTP 429 — rate limit, reintento %d en %.0fs",
+                            modelo, intento + 1, espera,
+                        )
+                        time.sleep(espera)
+                        continue
+                    if status in (500, 502, 503) and intento < max_reintentos:
+                        espera = 2.0 * (intento + 1)
+                        logger.warning(
+                            "OpenAI %s HTTP %s — reintento %d en %.1fs",
+                            modelo, status, intento + 1, espera,
+                        )
+                        time.sleep(espera)
+                        continue
+                    if status in (404, 400) and "model" in (e.response.text or "").lower():
+                        logger.warning(
+                            "OpenAI %s HTTP %s — probando siguiente modelo",
+                            modelo, status,
+                        )
+                        break
+                    if status in (401, 403):
+                        self._vision_activo = False
+                        self._vision_error  = self._mensaje_error_api(e, "openai")
+                        raise
+                    raise
+                except httpx.RequestError as e:
+                    ultimo_error = e
+                    if intento < max_reintentos:
+                        time.sleep(0.5)
+                        continue
+                    break
+
+        if ultimo_error:
+            raise ultimo_error
+        raise RuntimeError("OpenAI: sin respuesta de ningún modelo")
+
     @staticmethod
     def _mensaje_error_api(error: Exception, provider: str) -> str:
         """Genera mensaje legible según el tipo de error de la API."""
-        nombre = "Claude" if provider == "claude" else "Gemini"
+        nombre = {
+            "claude": "Claude",
+            "gemini": "Gemini",
+            "openai": "OpenAI",
+        }.get(provider, provider)
         if isinstance(error, httpx.HTTPStatusError):
             status = error.response.status_code
             if status == 429:
@@ -369,9 +433,18 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
                 return block["text"].strip()
         raise ValueError("Claude: respuesta sin bloque de texto")
 
+    @staticmethod
+    def _extraer_texto_openai(data: dict) -> str:
+        try:
+            return data["choices"][0]["message"]["content"].strip()
+        except (KeyError, IndexError, TypeError) as e:
+            raise ValueError("OpenAI: respuesta sin contenido de texto") from e
+
     def _extraer_texto_respuesta(self, data: dict) -> str:
         if self.vision_api == "claude":
             return self._extraer_texto_claude(data)
+        if self.vision_api == "openai":
+            return self._extraer_texto_openai(data)
         return self._extraer_texto_gemini(data)
 
     def _construir_prompt(self, clase_tm: str = None, prob_tm: float = None) -> str:
@@ -428,10 +501,32 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
             }],
         }
 
+    def _payload_openai(self, prompt: str, imagen_b64: str, mime_type: str) -> dict:
+        data_url = f"data:{mime_type};base64,{imagen_b64}"
+        return {
+            "max_tokens": 512,
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": data_url, "detail": "high"},
+                    },
+                ],
+            }],
+        }
+
     def _llamar_vision(self, prompt: str, imagen_b64: str, mime_type: str) -> dict:
         if self.vision_api == "claude":
             return self._llamar_claude(
                 self._payload_claude(prompt, imagen_b64, mime_type)
+            )
+        if self.vision_api == "openai":
+            return self._llamar_openai(
+                self._payload_openai(prompt, imagen_b64, mime_type)
             )
         return self._llamar_gemini(
             self._payload_gemini(prompt, imagen_b64, mime_type)
@@ -474,7 +569,16 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
     def _refinar_con_imagen(ruta_imagen: str, atributos: dict,
                             clase_tm: str = None, prob_tm: float = None,
                             prob_vidrio: float = None) -> dict:
-        """Aplica correcciones OpenCV post-API (lata, vidrio, metal)."""
+        """Aplica correcciones OpenCV post-API (lata, vidrio, metal) + tipados PET."""
+        from vision.visual_heuristics import (
+            _corregir_enjuague_y_atomizador,
+            _corregir_vaso_espuma_como_carton,
+            _corregir_gatorade_ambiguo,
+        )
+        # Correcciones por tipado (no requieren imagen)
+        atributos = _corregir_gatorade_ambiguo(atributos, clase_tm, prob_tm)
+        atributos = _corregir_enjuague_y_atomizador(atributos)
+        atributos = _corregir_vaso_espuma_como_carton(atributos)
         try:
             import cv2
             from vision.visual_heuristics import refinar_atributos_api
@@ -537,7 +641,7 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
                                 prob_tm: float = None,
                                 prob_vidrio: float = None) -> dict:
         """
-        Flujo híbrido: Claude o Gemini SIEMPRE analiza la imagen.
+        Flujo híbrido: Claude, OpenAI o Gemini SIEMPRE analiza la imagen.
         Si se pasa el resultado del TM, lo incluye como contexto en el prompt.
         """
         provider = self._provider_label
@@ -574,7 +678,7 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
 
         Pasos:
         1. TM corre (~0.1s) si clf está disponible → da contexto a la API de visión
-        2. Claude o Gemini analiza (~2s) → extrae los 9 atributos visuales
+        2. Claude, OpenAI o Gemini analiza (~2s) → extrae los 9 atributos visuales
         3. Sistema experto decide con esos atributos
 
         clf: instancia de TeachableMachineClassifier ya cargada (opcional)

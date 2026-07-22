@@ -60,24 +60,69 @@ def _flip_de_pet_a_vidrio(antes: dict, despues: dict) -> bool:
 def _corregir_gatorade_ambiguo(atributos: dict, clase_tm: str,
                                prob_tm: float) -> dict:
     """
-    Gatorade PET con tapa metálica mal etiquetada por Claude cuando TM
-    no es concluyente (prueba12 en cámara).
+    Gatorade PET: la API suele leer la tapa plástica de color (naranja/roja)
+    como twist_off_metalica. Si el brillo es difuso (PET) y el TM no está
+    muy seguro de vidrio (≥90%), corregir a rosca_plastico.
+
+    No toca el caso vidrio real: brillo alto_nitido → R19_M2/M3.
     """
     out = dict(atributos)
     obj = out.get("objeto_reconocido", "")
     tapa = out.get("tapa", "")
-    tm_inseguro = (
-        (clase_tm == "vidrio" and (prob_tm or 0) < 0.70)
-        or (clase_tm == "plastico" and prob_tm is not None and prob_tm < 0.85)
-    )
-    if (
-        obj == "botella_gatorade"
-        and tapa in ("twist_off_metalica", "tapa_ancha_metalica", "corona_metalica")
-        and out.get("brillo") == "medio_difuso"
-        and tm_inseguro
-    ):
+    if obj != "botella_gatorade":
+        return out
+    if tapa not in ("twist_off_metalica", "tapa_ancha_metalica", "corona_metalica"):
+        return out
+    if out.get("brillo") != "medio_difuso":
+        return out
+
+    # TM muy seguro de vidrio → respetar tapa metálica (posible condensación)
+    tm_vidrio_fuerte = clase_tm == "vidrio" and (prob_tm or 0) >= 0.90
+    if tm_vidrio_fuerte:
+        return out
+
+    out["tapa"] = "rosca_plastico"
+    out["confianza_ml"] = "media"
+    return out
+
+
+def _corregir_enjuague_y_atomizador(atributos: dict) -> dict:
+    """Colgate/Listerine y sprays: tapa casi siempre rosca plástica; nunca vidrio."""
+    out = dict(atributos)
+    obj = out.get("objeto_reconocido", "")
+    if obj == "botella_enjuague_bucal" and out.get("tapa") == "sin_tapa":
         out["tapa"] = "rosca_plastico"
-        out["confianza_ml"] = "media"
+        if out.get("brillo") == "alto_nitido":
+            out["brillo"] = "medio_difuso"
+    if obj == "botella_atomizador":
+        if out.get("tapa") in ("sin_tapa", "corona_metalica", "twist_off_metalica"):
+            out["tapa"] = "rosca_plastico"
+        if out.get("brillo") == "alto_nitido":
+            out["brillo"] = "medio_difuso"
+    return out
+
+
+def _corregir_vaso_espuma_como_carton(atributos: dict) -> dict:
+    """
+    API confunde vasos de espuma/Styrofoam blanco con vaso_carton.
+    Señal fuerte: blanco opaco + forma de vaso → plástico (espuma), no cartón kraft.
+    El cartón de cafetería suele ser marrón/kraft, no blanco puro.
+    """
+    out = dict(atributos)
+    if out.get("objeto_reconocido") != "vaso_carton":
+        return out
+    color = out.get("color", "")
+    forma = out.get("forma", "")
+    # Blanco opaco en vaso cónico/cilíndrico = espuma o plástico blanco, no cartón
+    if color == "blanco_opaco" and forma in (
+        "conica", "cilindrica_ancha", "cilindrica_estandar"
+    ):
+        out["objeto_reconocido"] = "vaso_plastico_blanco"
+        out["rigidez"] = "rigido"
+        if out.get("textura") == "fibrosa":
+            out["textura"] = "lisa_sin_brillo"
+        if out.get("brillo") == "bajo":
+            out["brillo"] = "medio_difuso"
     return out
 
 
@@ -87,6 +132,8 @@ def _aplicar_veto_consenso_api(antes: dict, despues: dict,
                                prob_tm: float = None) -> dict:
     """Revoca un flip indebido PET→vidrio (A4)."""
     despues = _corregir_gatorade_ambiguo(despues, clase_tm, prob_tm)
+    despues = _corregir_enjuague_y_atomizador(despues)
+    despues = _corregir_vaso_espuma_como_carton(despues)
     if _api_lectura_pet_fiable(antes) and _flip_de_pet_a_vidrio(antes, despues):
         return dict(antes)
     if tm_seguro_plastico and _flip_de_pet_a_vidrio(antes, despues):

@@ -1,5 +1,5 @@
 # vision/vision_config.py
-# Configuración y validación del proveedor de visión (Claude / Gemini)
+# Configuración y validación del proveedor de visión (Claude / Gemini / OpenAI)
 
 from __future__ import annotations
 
@@ -20,6 +20,10 @@ _GEMINI_DEFAULTS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
+]
+_OPENAI_DEFAULTS = [
+    "gpt-4o-mini",
+    "gpt-4o",
 ]
 
 
@@ -59,14 +63,16 @@ def resolver_config_vision() -> dict:
     advertencias: list[str] = []
 
     if not vision_api:
-        if os.environ.get("ANTHROPIC_API_KEY"):
+        if os.environ.get("OPENAI_API_KEY"):
+            vision_api = "openai"
+        elif os.environ.get("ANTHROPIC_API_KEY"):
             vision_api = "claude"
         elif os.environ.get("GEMINI_API_KEY"):
             vision_api = "gemini"
         else:
             raise ValueError(
-                "Configura ANTHROPIC_API_KEY o GEMINI_API_KEY en .env "
-                "(opcional: VISION_API=claude|gemini)"
+                "Configura OPENAI_API_KEY, ANTHROPIC_API_KEY o GEMINI_API_KEY en .env "
+                "(opcional: VISION_API=openai|claude|gemini)"
             )
 
     if vision_api == "claude":
@@ -83,6 +89,19 @@ def resolver_config_vision() -> dict:
             if m not in modelos:
                 modelos.append(m)
         proveedor_label = "Claude"
+    elif vision_api == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not api_key:
+            raise ValueError("VISION_API=openai pero OPENAI_API_KEY no está en .env")
+        raw_model = os.environ.get("OPENAI_MODEL", "").strip()
+        modelos = []
+        if raw_model:
+            modelos.append(raw_model)
+        for m in _OPENAI_DEFAULTS:
+            if m not in modelos:
+                modelos.append(m)
+        modelo_primario = modelos[0]
+        proveedor_label = "OpenAI"
     elif vision_api == "gemini":
         api_key = os.environ.get("GEMINI_API_KEY", "")
         if not api_key:
@@ -91,7 +110,9 @@ def resolver_config_vision() -> dict:
         modelo_primario = modelos[0]
         proveedor_label = "Gemini"
     else:
-        raise ValueError(f"VISION_API inválido: '{vision_api}'. Usa 'claude' o 'gemini'.")
+        raise ValueError(
+            f"VISION_API inválido: '{vision_api}'. Usa 'openai', 'claude' o 'gemini'."
+        )
 
     tm_ok = _modelo_tm_disponible()
 
@@ -100,6 +121,7 @@ def resolver_config_vision() -> dict:
         "proveedor_label": proveedor_label,
         "modelo_primario": modelo_primario,
         "modelos": modelos,
+        "api_key": api_key,
         "api_key_configurada": bool(api_key),
         "advertencias": advertencias,
         "tm_disponible": tm_ok,
