@@ -39,13 +39,37 @@ def test_payload_openai_incluye_imagen_y_schema_estricto():
     assert set(formato["schema"]["required"]) == set(formato["schema"]["properties"])
 
 
-def test_extraer_texto_openai_usa_output_text():
-    texto = AttributeExtractor._extraer_texto_openai({"output_text": '{"objeto_reconocido": "lata"}'})
+def test_extraer_texto_openai_recorre_output_message():
+    # Forma real de la respuesta HTTP cruda de /v1/responses: el texto vive
+    # en output[] -> {type: message} -> content[] -> {type: output_text}.
+    # NO existe un campo plano "output_text" en el JSON (eso es una
+    # propiedad calculada por el SDK oficial, no por la API en sí).
+    data = {
+        "output": [
+            {"type": "reasoning", "content": []},
+            {
+                "type": "message",
+                "content": [
+                    {"type": "output_text", "text": '{"objeto_reconocido": "lata"}'},
+                ],
+            },
+        ],
+    }
+    texto = AttributeExtractor._extraer_texto_openai(data)
     assert texto == '{"objeto_reconocido": "lata"}'
+
+
+def test_extraer_texto_openai_sin_output_falla_claro():
+    try:
+        AttributeExtractor._extraer_texto_openai({"output": [], "status": "incomplete"})
+        raise AssertionError("debía lanzar ValueError")
+    except ValueError:
+        pass
 
 
 if __name__ == "__main__":
     test_config_openai_usa_modelo_configurable()
     test_payload_openai_incluye_imagen_y_schema_estricto()
-    test_extraer_texto_openai_usa_output_text()
-    print("test_openai_provider: 3/3 OK")
+    test_extraer_texto_openai_recorre_output_message()
+    test_extraer_texto_openai_sin_output_falla_claro()
+    print("test_openai_provider: 4/4 OK")

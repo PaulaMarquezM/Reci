@@ -469,10 +469,23 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
 
     @staticmethod
     def _extraer_texto_openai(data: dict) -> str:
-        texto = (data.get("output_text") or "").strip()
-        if not texto:
-            raise ValueError("OpenAI: respuesta sin output_text")
-        return texto
+        # La API de Responses NO trae "output_text" como campo plano en el
+        # JSON crudo — eso es una propiedad calculada por el SDK oficial de
+        # Python. Acá hay que recorrer output[] a mano: el item type=message
+        # trae dentro content[] con el bloque type=output_text real.
+        for item in data.get("output", []):
+            if item.get("type") != "message":
+                continue
+            for block in item.get("content", []):
+                if block.get("type") == "output_text":
+                    texto = (block.get("text") or "").strip()
+                    if texto:
+                        return texto
+        logger.error("OpenAI respuesta sin texto de salida | data=%s", data)
+        estado = data.get("status")
+        detalle_incompleto = data.get("incomplete_details")
+        razon = f" (status={estado}, incomplete_details={detalle_incompleto})" if estado else ""
+        raise ValueError(f"OpenAI: respuesta sin texto de salida{razon}")
 
     def _extraer_texto_respuesta(self, data: dict) -> str:
         if self.vision_api == "claude":
