@@ -145,7 +145,7 @@ ATRIBUTOS REQUERIDOS (usa EXACTAMENTE estos valores):
 
   DIFERENCIAS CLAVE para objetos blancos:
   - vaso_plastico_blanco: blanco opaco, CÓNICO o cilíndrico, brillo difuso (plástico), forma de vaso de cafetería. También vasos de ESPUMA/unicel (mate, grano fino) → vaso_plastico_blanco, NUNCA vaso_carton
-  - vaso_carton vs vaso_plastico_blanco: NO te guíes solo por la impresión. Cartón REAL: costura lateral vertical donde se une el papel, textura FIBROSA, borde superior enrollado de papel sin brillo plástico. Espuma/Styrofoam blanca: grano mate uniforme SIN costura de papel → vaso_plastico_blanco. Los vasos de cafetería del campus con diseño impreso tipo kraft/café (CHOCOLATE, CAPUCCINO...) pueden ser plástico blanco o cartón: mira la costura y la textura
+  - vaso_carton vs vaso_plastico_blanco: reportá vaso_carton cuando VEAS pinta de cartón real — costura lateral vertical, textura FIBROSA, borde superior enrollado de papel sin brillo plástico (típico de los vasos de cafetería del campus con diseño impreso kraft/café: CHOCOLATE, CAPUCCINO...). Espuma/Styrofoam blanca lisa sin costura → vaso_plastico_blanco. IMPORTANTE: en este proyecto AMBOS van a PLÁSTICO — los vasos de cafetería con pinta de cartón son polipapel (cartón + recubrimiento plástico interno), decisión de equipo pese al matiz de material compuesto. No confundir con carton (cajas/cartón real de embalaje, eso sí es orgánico)
   - yogur_plastico: blanco opaco, CILÍNDRICO ANCHO (más gordo que un vaso), para yogur o lácteos
   - plato_plastico: blanco opaco, PLANO (rectangular o circular visto desde arriba), rígido
   - papel_servilleta: blanco opaco, PLANO pero FLEXIBLE y fibroso, textura diferente al plástico

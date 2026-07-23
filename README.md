@@ -446,6 +446,7 @@ Estos son los datos que el modelo ML extrae de la imagen y que el sistema expert
 | `botella_cola_gallito` | PLASTICO | Cola Gallito — gaseosa ecuatoriana |
 | `botella_gatorade` | PLASTICO | Gatorade — bebida deportiva boca ancha |
 | `vaso_plastico_blanco` | PLASTICO | Vasos blancos opacos de cafetería (café, chocolate, té caliente) |
+| `vaso_carton` | PLASTICO | Vasos de cafetería con pinta de cartón (polipapel — decisión de equipo, jul 2026, pese al matiz de material compuesto) |
 | `plato_plastico` | PLASTICO | Platos desechables blancos rígidos (comedor campus) |
 | `recipiente_plastico` | PLASTICO | Bowls y contenedores de comida en plástico blanco |
 | `cubierto_plastico` | PLASTICO | Tenedores, cucharas y cuchillos desechables (comedor campus) |
@@ -457,7 +458,6 @@ Estos son los datos que el modelo ML extrae de la imagen y que el sistema expert
 | `frasco_vidrio` | VIDRIO | Snob mermelada, frascos de conserva |
 | `botella_jugo_vidrio` | VIDRIO | Jugos en vidrio, Natura vidrio |
 | `botella_pony_malta` | VIDRIO | Pony Malta — malta ecuatoriana en vidrio |
-| `vaso_carton` | ORGANICO | Vasos de cartón de cafetería |
 | `tetra_pak` | ORGANICO | Del Valle, Sunny, Natura Tetra Pak |
 | `cascara_fruta` | ORGANICO | Cáscaras de fruta |
 | `restos_comida` | ORGANICO | Cualquier resto de comida |

@@ -23,8 +23,8 @@ CASOS_AMBIGUOS = [
         }
     },
     {
-        "id": "T23", "nombre": "DIFÍCIL — Vaso cartón vs vaso plástico",
-        "esperado": "ORGANICO", "categoria": "AMBIGUO",
+        "id": "T23", "nombre": "Vaso de cafetería (polipapel) con textura fibrosa — decisión de equipo: plástico",
+        "esperado": "PLASTICO", "categoria": "AMBIGUO",
         "atributos": {
             "objeto_reconocido": "vaso_carton", "confianza_ml": "media",
             "transparencia": "ninguna", "color": "blanco_opaco",
@@ -176,8 +176,8 @@ CASOS_AMBIGUOS = [
         }
     },
     {
-        "id": "T62", "nombre": "DIFÍCIL — Vaso cartón vs vaso plástico blanco (textura fibrosa = cartón)",
-        "esperado": "ORGANICO", "categoria": "AMBIGUO",
+        "id": "T62", "nombre": "Vaso de cafetería (polipapel) vs vaso plástico blanco — ambos son plástico",
+        "esperado": "PLASTICO", "categoria": "AMBIGUO",
         "atributos": {
             "objeto_reconocido": "vaso_carton", "confianza_ml": "media",
             "transparencia": "ninguna", "color": "blanco_opaco",

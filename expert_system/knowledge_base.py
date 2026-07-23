@@ -118,7 +118,12 @@ class KnowledgeBase:
             Rule("R14", {"objeto_reconocido": "restos_comida",         "confianza_ml": "alta"}, "ORGANICO",  0.98, "Restos de comida identificados — residuo orgánico"),
             Rule("R15", {"objeto_reconocido": "papel_servilleta",      "confianza_ml": "alta"}, "ORGANICO",  0.95, "Servilleta o papel identificado — va a orgánico/papel"),
             Rule("R16", {"objeto_reconocido": "carton",                "confianza_ml": "alta"}, "ORGANICO",  0.95, "Cartón o vaso de cartón identificado — va a orgánico/papel"),
-            Rule("R17", {"objeto_reconocido": "vaso_carton",           "confianza_ml": "alta"}, "ORGANICO",  0.94, "Vaso de cartón de cafetería identificado"),
+            # Decisión de equipo (jul 2026): los vasos de cafetería con pinta de
+            # cartón son en realidad polipapel (cartón + recubrimiento plástico
+            # interno) — se aceptan como PLÁSTICO pese al matiz de material
+            # compuesto. No confundir con "carton" (cajas/cartón real, R16).
+            Rule("R17", {"objeto_reconocido": "vaso_carton",           "confianza_ml": "alta"}, "PLASTICO",  0.94, "Vaso de cafetería (polipapel) identificado — se acepta como plástico"),
+            Rule("R17b", {"objeto_reconocido": "vaso_carton",          "confianza_ml": "media"}, "PLASTICO", 0.85, "Probable vaso de cafetería (polipapel) con confianza media — plástico"),
 
             Rule("R18", {"objeto_reconocido": "lata",                  "confianza_ml": "alta"}, "LATA",      1.00, "Lata de aluminio identificada — no pertenece a ningún compartimento"),
 
@@ -478,8 +483,8 @@ class KnowledgeBase:
         # Vaso de cartón cilíndrico — no siempre es cónico
             Rule("R112", {"objeto_reconocido": "vaso_carton",
                           "textura": "lisa_sin_brillo", "rigidez": "rigido"},
-                 "ORGANICO", 0.95,
-                 "Vaso de cartón con textura sin brillo → orgánico/papel sin importar forma"),
+                 "PLASTICO", 0.95,
+                 "Vaso de cafetería (polipapel) con textura sin brillo → plástico sin importar forma"),
 
             # ── Productos ecuatorianos/manabitas — identificación visual ──────
 

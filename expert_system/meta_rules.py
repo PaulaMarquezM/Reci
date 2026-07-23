@@ -345,6 +345,26 @@ class MetaRuleEngine:
             })
         ))
 
+        # ── MR19: Vaso de cafetería (vaso_carton) → nunca orgánico ─────────
+        # Decisión de equipo (jul 2026): estos vasos son polipapel (cartón +
+        # recubrimiento plástico), se aceptan como PLÁSTICO pese al matiz de
+        # material compuesto. Sin esto, reglas genéricas de textura fibrosa/
+        # marrón (R41, R43, R63) le ganan por CF a R17/R17b y vuelven a mandar
+        # el vaso a ORGANICO. No afecta a "carton" (cajas/cartón real, R16).
+        self.meta_reglas.append(MetaRule(
+            nombre="MR19",
+            prioridad=10,
+            descripcion="Vaso de cafetería (vaso_carton/polipapel) → excluir ORGANICO, es plástico",
+            condicion=lambda hechos, ctx: hechos.get("objeto_reconocido") == "vaso_carton",
+            accion=lambda hechos, ctx: ctx.update({
+                "excluir_categorias": ctx.get("excluir_categorias", []) + ["ORGANICO"],
+                "sesgo_plastico": ctx.get("sesgo_plastico", 0) + 0.10,
+                "priorizar_categoria": "PLASTICO",
+                "factor_prioridad": 1.10,
+                "nota": "MR19: Vaso de cafetería (polipapel) → ORGANICO excluido, es plástico"
+            })
+        ))
+
         # Ordenar por prioridad descendente
         self.meta_reglas.sort(key=lambda mr: mr.prioridad, reverse=True)
 
