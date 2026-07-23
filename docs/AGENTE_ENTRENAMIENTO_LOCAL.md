@@ -181,7 +181,7 @@ Empieza por el checklist paso 0 y confirma las rutas antes de entrenar.
 - [ ] **10** — Abrir `entrenamiento_manifest.json` del run y validar métricas (sección 7)
 - [ ] **11** — Copiar `model.tflite` + `labels.txt` → `RECI_REPO\model\`
 - [ ] **12** — `python tests\test_imagenes_completo.py` (meta **16/16**)
-- [ ] **13** — `python tests\test_cases.py` (meta **110/110**)
+- [ ] **13** — `python tests\test_cases.py` (meta **117/117**)
 - [ ] **14** — Completar reporte final (sección 8) para el usuario
 
 ---

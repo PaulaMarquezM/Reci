@@ -17,7 +17,7 @@ flowchart TD
     F -->|No 429/503| H[TM + heurísticas OpenCV]
     G --> I[JSON: 9 atributos visuales]
     H --> I
-    I --> J[Sistema Experto: 174 reglas + 16 meta-reglas]
+    I --> J[Sistema Experto: 193 reglas + 18 meta-reglas]
     J --> K{Conclusión}
     K -->|PLASTICO| L[Compuerta derecha · LED verde · 135°]
     K -->|VIDRIO| M[Compuerta izquierda · LED verde · 45°]
@@ -61,7 +61,7 @@ si ves algo diferente — especialmente en material, brillo de tapa y textura.
 | Imagen original | JPG capturada | ✅ Sí (base64 en `inline_data`) |
 | `objeto_reconocido` del MAPA | `botella_agua` | ❌ No |
 | Atributos TM (color, tapa, etc.) | del MAPA_CLASES | ❌ No |
-| Reglas del sistema experto | 174 reglas | ❌ No |
+| Reglas del sistema experto | 193 reglas | ❌ No |
 
 La inferencia TM cruda usa `_inferir()` **antes** de las heurísticas OpenCV, para que Gemini reciba el voto real del MobileNetV2, no el atributo ya corregido.
 

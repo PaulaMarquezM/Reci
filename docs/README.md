@@ -1,6 +1,42 @@
 # Documentación RECI
 
-Índice de referencia del proyecto. El README principal sigue siendo la guía completa; aquí están los documentos temáticos.
+Índice único del monorepo. La documentación importada de RECI2 se conserva
+completa en `product/`; la documentación histórica y operativa de IA permanece
+en esta carpeta.
+
+Organización, fuentes únicas y comandos: [MONOREPO.md](MONOREPO.md).
+
+## Qué documento manda
+
+- Producto, hardware, cloud, app y planificación: `product/PLAN.md` y las decisiones de `product/`.
+- Entrenamiento, modelo TFLite, reglas y visión híbrida: documentos de IA listados abajo y el README principal.
+- El PDF `product/Acta-de-constitucion.pdf` es un artefacto original y no debe reescribirse.
+- Una decisión reemplazada se marca como histórica; no se elimina.
+
+## Producto integrado — documentación conservada de RECI2
+
+| Documento | Contenido |
+|---|---|
+| [product/PLAN.md](product/PLAN.md) | Plan maestro vivo, estado y roadmap |
+| [product/ACTA.md](product/ACTA.md) | Alcance, requisitos, criterios y riesgos |
+| [product/Acta-de-constitucion.pdf](product/Acta-de-constitucion.pdf) | Acta original en PDF |
+| [product/API-ROBOT.md](product/API-ROBOT.md) | Contrato HTTP entre cloud y robot |
+| [product/CONEXIONES.md](product/CONEXIONES.md) | Cableado y ensamblaje |
+| [product/DECISION-SERVICIO-VISION.md](product/DECISION-SERVICIO-VISION.md) | Arquitectura del servicio de visión |
+| [product/DECISION-SERVICIO-FACIAL.md](product/DECISION-SERVICIO-FACIAL.md) | Arquitectura facial opt-in |
+| [product/DECISION-QR-RECLAMO.md](product/DECISION-QR-RECLAMO.md) | Reclamo de puntos mediante QR |
+| [product/GUIA-PRUEBA-ESP32-CAM.md](product/GUIA-PRUEBA-ESP32-CAM.md) | Prueba de cámara y flujo cloud |
+| [product/GUIA-CONTINUACION-ESP32-UNO.md](product/GUIA-CONTINUACION-ESP32-UNO.md) | Continuación del prototipo físico |
+| [product/PROPUESTA-NAVEGACION-AUTONOMA.md](product/PROPUESTA-NAVEGACION-AUTONOMA.md) | Propuesta de navegación |
+| [product/IA.md](product/IA.md) | Visión general de IA dentro del producto |
+
+## Archivo histórico
+
+| Documento | Motivo |
+|---|---|
+| [archive/GUIA-PRUEBA-ESP32-CAM-RECI-LOCAL.md](archive/GUIA-PRUEBA-ESP32-CAM-RECI-LOCAL.md) | Guía previa conservada; para el flujo productivo usar la guía de `product/` |
+
+## IA, entrenamiento y validación
 
 | Documento | Contenido |
 |-----------|-----------|

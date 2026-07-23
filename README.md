@@ -7,6 +7,30 @@
 
 ---
 
+## Monorepo unificado
+
+Este repositorio reúne el laboratorio de IA original y el producto integrado
+que antes vivía en RECI2. Hay una sola fuente para el sistema experto, las
+heurísticas y el prompt; la web, los servicios cloud y el firmware consumen
+ese núcleo común.
+
+| Área | Ruta | Responsabilidad |
+|---|---|---|
+| IA y entrenamiento | `expert_system/`, `vision/`, `scripts/`, notebooks | Dataset, entrenamiento MobileNetV2, reglas y validación |
+| Servicio de visión | `services/vision/` | Adaptador FastAPI cloud sobre la IA compartida |
+| Servicio facial | `services/face/` | Embeddings faciales opt-in |
+| Aplicación y nube | `web/` | PWA Next.js, API routes y migraciones Supabase |
+| Robot físico | `firmware/` | ESP32-CAM, Arduino Mega y pruebas Arduino Uno |
+| Documentación de producto | `docs/product/` | Acta, plan maestro, decisiones, conexiones y contratos |
+
+La fuente vigente para la arquitectura completa del producto es
+[`docs/product/PLAN.md`](docs/product/PLAN.md). El contenido técnico que sigue
+en este README documenta principalmente el desarrollo y entrenamiento de IA.
+La organización y comandos del repositorio están en
+[`docs/MONOREPO.md`](docs/MONOREPO.md).
+
+---
+
 ## Tabla de contenidos
 
 1. [¿Qué es RECI?](#qué-es-reci)
@@ -80,7 +104,7 @@ Corrige latas, metal y vidrio mal etiquetados por la API
   9 atributos visuales listos
           ↓
   Sistema Experto RECI
-  (174 reglas · 16 meta-reglas · forward + backward chaining · CF MYCIN)
+  (193 reglas · 18 meta-reglas · forward + backward chaining · CF MYCIN)
           ↓
   Conclusión: VIDRIO | PLÁSTICO | DESCONOCIDO | LATA | ORGÁNICO
           ↓
@@ -99,7 +123,7 @@ Corrige latas, metal y vidrio mal etiquetados por la API
 | Capa | Componente | Tecnología |
 |---|---|---|
 | Percepción | Cámara + MobileNetV2 | TensorFlow Lite, Python, Raspberry Pi 4 |
-| IA / Experto | Motor de inferencia + 174 reglas IF-THEN | Python handcrafted (sin librerías de SE externas) |
+| IA / Experto | Motor de inferencia + 193 reglas IF-THEN | Python handcrafted (sin librerías de SE externas) |
 | Control físico | Servomotores + sensores + cámara + LEDs + actuadores | Microcontrolador / placa (por definir) |
 | Comunicación local | Controlador IA ↔ controlador físico | Protocolo por definir según hardware final |
 | Backend / Nube | API REST + base de datos + eventos | FastAPI + Supabase (PostgreSQL) + Vercel |
@@ -118,15 +142,28 @@ Sin compuerta       → RECHAZADO→ servo 0°   → LED rojo  → "Material no 
 
 ## Estructura de archivos
 
+Desde julio de 2026 este repo es un monorepo: además del laboratorio de IA
+detallado abajo, incluye `web/` (PWA Next.js + Supabase), `firmware/`
+(ESP32-CAM + Arduino) y `services/` (adaptadores cloud de visión y rostro).
+Ver [`docs/MONOREPO.md`](docs/MONOREPO.md) para la organización completa y
+qué carpeta es la fuente única de cada responsabilidad.
+
 ```
 RECI/
+├── web/                         # PWA Next.js — mapa, llamadas, cupones, Supabase
+├── firmware/                    # ESP32-CAM (captura + voto mayoritario) y Arduino Mega/Uno
+├── services/
+│   ├── vision/                  # Adaptador cloud — consume expert_system/ y vision/ de la raíz
+│   └── face/                    # Reconocimiento facial (FaceNet512 vía DeepFace)
+├── docs/product/                # Documentación de producto (acta, decisiones, conexiones)
+│
 ├── expert_system/
-│   ├── knowledge_base.py       # 174 reglas IF-THEN en 5 niveles + atributos válidos
+│   ├── knowledge_base.py       # 193 reglas IF-THEN en 5 niveles + atributos válidos
 │   ├── inference_engine.py     # Motor principal: forward chaining, CF MYCIN, meta-reglas
 │   ├── working_memory.py       # Memoria de trabajo — hechos activos por ciclo de inferencia
 │   ├── backward_chaining.py    # Encadenamiento hacia atrás — verificación de hipótesis
 │   ├── certainty_factor.py     # Factor de Certeza estilo MYCIN (fórmula de combinación)
-│   ├── meta_rules.py           # 16 meta-reglas que ajustan el razonamiento
+│   ├── meta_rules.py           # 18 meta-reglas que ajustan el razonamiento
 │   ├── validator.py            # Validador de atributos antes de inferir
 │   ├── statistics.py           # Estadísticas de sesión + payload para Supabase
 │   └── explanation.py          # Reporte técnico completo exportable a JSON
@@ -156,7 +193,7 @@ RECI/
 │   └── app.py                  # FastAPI — 8 endpoints REST, motor de inferencia compartido
 │
 ├── tests/
-│   ├── test_cases.py             # Runner principal — 110 pruebas formales
+│   ├── test_cases.py             # Runner principal — 117 pruebas formales
 │   ├── test_imagenes_completo.py # 16 imágenes reales — flujo TM + API + SE
 │   ├── test_refinar_api.py       # Pruebas unitarias de refinamiento lata/vidrio/PET
 │   ├── test_backward_chaining.py # Pruebas dedicadas a los goals de backward chaining
@@ -293,7 +330,7 @@ Si no hay `model/model.tflite`, el sistema detecta su ausencia y usa Claude/Gemi
 ```bash
 # Verificar sistema experto (sin hardware, sin internet)
 python3 tests/test_cases.py
-# Resultado esperado: 110/110 pruebas aprobadas (100%)
+# Resultado esperado: 117/117 pruebas aprobadas (100%)
 
 # Verificar refinamiento OpenCV post-API
 python3 tests/test_refinar_api.py
@@ -434,7 +471,7 @@ Estos son los datos que el modelo ML extrae de la imagen y que el sistema expert
 
 ```
 InferenceEngine
-    ├── KnowledgeBase          → 174 reglas IF-THEN
+    ├── KnowledgeBase          → 193 reglas IF-THEN
     ├── WorkingMemory          → hechos activos del ciclo actual
     ├── AttributeValidator     → valida los 9 atributos antes de inferir
     ├── MetaRuleEngine         → 12 meta-reglas (ajustan EL CÓMO razonar)
@@ -449,14 +486,14 @@ InferenceEngine
 ```
 1. cargar_hechos()    → validar + cargar atributos en WorkingMemory
 2. MetaRuleEngine     → 12 meta-reglas ajustan el contexto de razonamiento
-3. Forward chaining   → evaluar las 174 reglas contra los hechos actuales
+3. Forward chaining   → evaluar las 193 reglas contra los hechos actuales
 4. CF MYCIN           → combinar evidencia de las reglas disparadas por categoría
 5. Ajustes meta       → aplicar exclusiones, prioridades y sesgos del contexto
 6. BackwardChaining   → verificar la conclusión desde los hechos hacia atrás
 7. decision_hardware()→ traducir conclusión a ángulo servo + LED + mensaje
 ```
 
-### Niveles de reglas (174 reglas)
+### Niveles de reglas (193 reglas)
 
 | Nivel | Cantidad | Descripción |
 |---|---|---|
@@ -690,7 +727,7 @@ refinar_atributos_api() — OpenCV         ← corrige latas, metal y vidrio mal
         ↓ (si la API falla 404/429/503)
 TM + refinar_atributos() + refinar_atributos_api()  ← fallback automático (16/16 OK)
         ↓
-9 atributos → Sistema Experto (174 reglas) → Decisión final → Hardware
+9 atributos → Sistema Experto (193 reglas) → Decisión final → Hardware
 ```
 
 ### Costo API (estimado)
@@ -974,7 +1011,7 @@ Latas de aluminio (Red Bull, Monster lata, Coca-Cola lata, atún), **Tetra Pak**
 python3 tests/test_cases.py
 ```
 
-**Resultado actual: 110/110 pruebas aprobadas (100%)**
+**Resultado actual: 117/117 pruebas aprobadas (100%)**
 
 | Categoría | Resultado | Objetos cubiertos |
 |---|---|---|
@@ -1107,7 +1144,7 @@ uvicorn api.app:app --reload --port 8000
 |---|---|
 | Fundamentos de sistemas expertos | `knowledge_base.py` + `inference_engine.py` |
 | Relación SE con IA | Arquitectura híbrida MobileNetV2 + SE handcrafted + Claude/Gemini |
-| Encadenamiento hacia adelante | `InferenceEngine.ejecutar()` — loop sobre 174 reglas |
+| Encadenamiento hacia adelante | `InferenceEngine.ejecutar()` — loop sobre 193 reglas |
 | Encadenamiento hacia atrás | `BackwardChainingEngine` — verificación de hipótesis por goals ponderados |
 | Factor de Certeza MYCIN | `CertaintyFactor` — fórmula de combinación + bonus por especificidad |
 | Meta-conocimiento | `MetaRuleEngine` — 12 meta-reglas que controlan el razonamiento |
@@ -1138,10 +1175,10 @@ uvicorn api.app:app --reload --port 8000
 ### Completado ✅
 
 **Sistema experto:**
-- **174 reglas**, forward + backward chaining, CF MYCIN, **16 meta-reglas**
+- **193 reglas**, forward + backward chaining, CF MYCIN, **18 meta-reglas**
 - Productos ecuatorianos: Fioravanti, Cola Gallito, Gatorade, Pony Malta, Tetra Pak, Güitig vidrio, Zhumir, Pulp/Tampico, aceite de cocina, Colgate Plax/Listerine
 - Validador de atributos, estadísticas, reporte técnico JSON
-- **110/110 pruebas formales (100%)** — campus, ambiguos, extremos, LATA
+- **117/117 pruebas formales (100%)** — campus, ambiguos, extremos, LATA
 - Condiciones eliminatorias en backward chaining: VIDRIO requiere tapa metálica, LATA requiere brillo metálico — ambas con 6/6 pruebas dedicadas
 
 **Modelo ML:**
@@ -1223,7 +1260,7 @@ Demo estable en laptop con cámara:
 
 | Métrica | Objetivo |
 |---------|----------|
-| Tests automatizados | 110/110 SE · 5/5 refinamiento · 16/16 imágenes |
+| Tests automatizados | 117/117 SE · 5/5 refinamiento · 16/16 imágenes |
 | Batería manual campus | ≥ 18/20 objetos correctos |
 | Claude en vivo | Activo en cámara (no fallback silencioso por 404) |
 
@@ -1249,7 +1286,7 @@ Demo estable en laptop con cámara:
 - [x] **A2 — Política de decisión conservadora**  
   Umbral mínimo de CF para abrir PLASTICO/VIDRIO (`UMBRAL_APERTURA_CF = 0.75`). Si backward contradice con score > 0.80 **y** forward no es concluyente (`CF < CF_FORWARD_SEGURO = 0.90`) → `DESCONOCIDO`. Si CF final bajo umbral → rechazo. La condición de forward-CF evita rechazar casos de vidrio confiables donde el backward roza el 0.811.  
   *Archivos:* `expert_system/inference_engine.py` (constantes de clase + bloque A2 al final de `ejecutar`)  
-  *Listo:* rechazo conservador verificado en ambas ramas (CF bajo y conflicto backward); tests SE 110/110, backward 6/6, refinar API 5/5.
+  *Listo:* rechazo conservador verificado en ambas ramas (CF bajo y conflicto backward); tests SE 117/117, backward 6/6, refinar API 5/5.
 
 - [x] **A3 — Reglas producto vs material**  
   Reglas de Gatorade condicionadas por atributos físicos, no solo por marca: tapa `rosca_plastico` → PLASTICO (`R19_M`/`R19_N`), tapa metálica + `brillo alto_nitido` → VIDRIO (`R19_M2`/`R19_M3`), y `brillo medio_difuso` → PLASTICO como discriminador de material (`R19_M4`).  

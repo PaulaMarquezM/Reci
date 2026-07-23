@@ -35,7 +35,7 @@ Flujo por cada objeto:
   Corrige latas, metal, PET vs vidrio mal etiquetados
        ↓
   Sistema experto RECI — ~0.01 s
-  174 reglas · 16 meta-reglas · forward + backward chaining · CF MYCIN
+  193 reglas · 18 meta-reglas · forward + backward chaining · CF MYCIN
        ↓
   Decisión: PLASTICO | VIDRIO | LATA | ORGANICO | DESCONOCIDO
        ↓
@@ -49,8 +49,8 @@ Si Claude/Gemini falla (404, 429, timeout):
 --------------------------------------------------------------------------------
 Implementado en Python puro (sin librerías de SE externas):
 
-  · 174 reglas IF-THEN en 5 niveles
-  · 16 meta-reglas (sesgos, exclusiones, modo cauteloso)
+  · 193 reglas IF-THEN en 5 niveles
+  · 18 meta-reglas (sesgos, exclusiones, modo cauteloso)
   · Forward chaining + backward chaining con goals ponderados
   · Factor de certeza estilo MYCIN
   · Validador de 9 atributos obligatorios
@@ -58,7 +58,7 @@ Implementado en Python puro (sin librerías de SE externas):
   · Productos ecuatorianos del campus: Fioravanti, Cola Gallito, Gatorade,
     Pony Malta, Tetra Pak, Güitig, Powerade, Colgate Plax, etc.
 
-Pruebas formales del SE: 110/110 (100%)
+Pruebas formales del SE: 117/117 (100%)
   · VIDRIO, PLÁSTICO, ambiguos, extremos, campus, LATA, orgánico
 
 
@@ -93,7 +93,7 @@ Entrenamiento:
 --------------------------------------------------------------------------------
   Test                          Resultado
   ─────────────────────────────────────────
-  tests/test_cases.py           110/110 (100%)
+  tests/test_cases.py           117/117 (100%)
   tests/test_refinar_api.py     5/5 (100%)
   tests/test_backward_chaining  6/6 (100%)
   tests/test_imagenes_completo  15/16 (93.8%) — última corrida Mac jul 2026
@@ -144,7 +144,7 @@ Tiempo promedio flujo híbrido: ~2–3 s por imagen
 10. COMPLETADO vs PENDIENTE
 --------------------------------------------------------------------------------
   COMPLETADO:
-    · SE 174 reglas + 16 meta-reglas + 110 pruebas
+    · SE 193 reglas + 18 meta-reglas + 117 pruebas
     · Modelo ML propio + dataset ~21k fotos
     · Flujo híbrido Claude/Gemini + fallback OpenCV
     · Cámara demo + API REST + tests imagen

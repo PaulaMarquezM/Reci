@@ -144,7 +144,7 @@ def main():
 
     y = merge_y + 72 + 36
     se_box = (x1, y, x1 + bw, y + 88)
-    rounded_box(draw, se_box, "SISTEMA EXPERTO\n174 reglas IF-THEN · 16 meta-reglas · CF MYCIN", box_font, style="box_se")
+    rounded_box(draw, se_box, "SISTEMA EXPERTO\n193 reglas IF-THEN · 18 meta-reglas · CF MYCIN", box_font, style="box_se")
 
     arrow_down(draw, cx, se_box[3], se_box[3] + 28)
 
