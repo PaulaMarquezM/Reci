@@ -16,7 +16,7 @@ import os
 import secrets
 import sys
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 # El monorepo mantiene una sola fuente para expert_system/ y vision/.
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -62,7 +62,7 @@ except ValueError as exc:
     logger.error("VisionClassifier no se pudo inicializar: %s", exc)
 
 
-def require_service_key(x_vision_service_key: Annotated[str | None, Header()] = None) -> None:
+def require_service_key(x_vision_service_key: Annotated[Optional[str], Header()] = None) -> None:
     expected = os.getenv("VISION_SERVICE_API_KEY")
     if not expected or not x_vision_service_key or not secrets.compare_digest(x_vision_service_key, expected):
         raise HTTPException(status_code=401, detail="No autorizado")

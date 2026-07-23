@@ -39,7 +39,7 @@ class AttributeExtractor:
     )
     CLAUDE_URL = "https://api.anthropic.com/v1/messages"
     CLAUDE_VERSION = "2023-06-01"
-    OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+    OPENAI_URL = "https://api.openai.com/v1/responses"
 
     GEMINI_MODELS = [
         "gemini-2.5-flash",
@@ -61,6 +61,40 @@ class AttributeExtractor:
         "topP":             0.8,
         "maxOutputTokens":  256,
         "responseMimeType": "application/json",
+    }
+
+    # Schema estricto para la API de Responses de OpenAI: garantiza que la
+    # respuesta cumpla exactamente estos 9 atributos con valores válidos, en
+    # vez de confiar en que el modelo no invente un valor fuera de la lista.
+    # objeto_reconocido queda como string libre porque la lista de objetos
+    # crece seguido en el prompt y no vale la pena duplicarla aquí.
+    _OPENAI_SCHEMA = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "objeto_reconocido": {"type": "string"},
+            "confianza_ml": {"type": "string", "enum": ["alta", "media", "baja"]},
+            "transparencia": {"type": "string", "enum": ["alta", "media", "baja", "ninguna"]},
+            "color": {"type": "string", "enum": [
+                "transparente", "ambar", "verde_oscuro", "blanco_opaco",
+                "negro", "variado_vivo", "marron_tierra", "metalico",
+            ]},
+            "forma": {"type": "string", "enum": [
+                "cilindrica_delgada", "cilindrica_estandar", "cilindrica_ancha",
+                "conica", "rectangular_plana", "irregular",
+            ]},
+            "brillo": {"type": "string", "enum": ["alto_nitido", "medio_difuso", "bajo", "metalico"]},
+            "tapa": {"type": "string", "enum": [
+                "rosca_plastico", "corona_metalica", "twist_off_metalica",
+                "tapa_ancha_metalica", "domo_plastico", "sin_tapa", "sellado",
+            ]},
+            "textura": {"type": "string", "enum": ["lisa_brillante", "lisa_sin_brillo", "rugosa", "fibrosa"]},
+            "rigidez": {"type": "string", "enum": ["rigido", "flexible", "indefinido"]},
+        },
+        "required": [
+            "objeto_reconocido", "confianza_ml", "transparencia", "color",
+            "forma", "brillo", "tapa", "textura", "rigidez",
+        ],
     }
 
     PROMPT_BASE = """Eres el módulo de visión del sistema experto RECI, un tacho inteligente de reciclaje universitario en Ecuador.
@@ -435,10 +469,10 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
 
     @staticmethod
     def _extraer_texto_openai(data: dict) -> str:
-        try:
-            return data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError, TypeError) as e:
-            raise ValueError("OpenAI: respuesta sin contenido de texto") from e
+        texto = (data.get("output_text") or "").strip()
+        if not texto:
+            raise ValueError("OpenAI: respuesta sin output_text")
+        return texto
 
     def _extraer_texto_respuesta(self, data: dict) -> str:
         if self.vision_api == "claude":
@@ -504,19 +538,26 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin
     def _payload_openai(self, prompt: str, imagen_b64: str, mime_type: str) -> dict:
         data_url = f"data:{mime_type};base64,{imagen_b64}"
         return {
-            "max_tokens": 512,
-            "temperature": 0.1,
-            "response_format": {"type": "json_object"},
-            "messages": [{
+            "input": [{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "input_text", "text": prompt},
                     {
-                        "type": "image_url",
-                        "image_url": {"url": data_url, "detail": "high"},
+                        "type": "input_image",
+                        "image_url": data_url,
+                        "detail": "low",
                     },
                 ],
             }],
+            "reasoning": {"effort": "low"},
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "atributos_residuo",
+                    "strict": True,
+                    "schema": self._OPENAI_SCHEMA,
+                }
+            },
         }
 
     def _llamar_vision(self, prompt: str, imagen_b64: str, mime_type: str) -> dict:

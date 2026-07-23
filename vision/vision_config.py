@@ -15,16 +15,13 @@ _CLAUDE_MODEL_TYPOS = {
     "claude-haiku-4.5": "claude-haiku-4-5",
 }
 
-_CLAUDE_DEFAULTS = ["claude-haiku-4-5", "claude-sonnet-4-6"]
+_CLAUDE_DEFAULTS = ["claude-sonnet-4-6", "claude-haiku-4-5"]
 _GEMINI_DEFAULTS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
 ]
-_OPENAI_DEFAULTS = [
-    "gpt-4o-mini",
-    "gpt-4o",
-]
+_OPENAI_DEFAULTS = ["gpt-5.6-luna"]
 
 
 def _modelo_tm_disponible() -> bool:
