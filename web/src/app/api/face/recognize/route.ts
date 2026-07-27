@@ -43,17 +43,23 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createServiceClient()
-  const { data: embeddings, error: embeddingsError } = await supabase
+  const { data: legacyEmbeddings, error: legacyEmbeddingsError } = await supabase
     .from('face_embeddings')
     .select('user_id, embedding_ciphertext')
     .not('embedding_ciphertext', 'is', null)
 
-  if (embeddingsError) {
-    console.error('face recognize embeddings:', embeddingsError.message)
+  const { data: samples, error: samplesError } = await supabase
+    .from('face_embedding_samples')
+    .select('user_id, embedding_ciphertext')
+
+  if (legacyEmbeddingsError || samplesError) {
+    console.error('face recognize embeddings:', legacyEmbeddingsError?.message ?? samplesError?.message)
     return err('Error al consultar los embeddings', 500)
   }
 
-  const userIds = (embeddings ?? []).map((record) => record.user_id)
+  // Los registros anteriores (una sola muestra) siguen siendo reconocibles.
+  const embeddings = [...(legacyEmbeddings ?? []), ...(samples ?? [])]
+  const userIds = [...new Set(embeddings.map((record) => record.user_id))]
   if (userIds.length === 0) return ok({ matched: false })
 
   const { data: profiles, error: profilesError } = await supabase

@@ -28,6 +28,31 @@ carpeta; el servicio lo carga automáticamente al iniciar.
 El backend web debe tener el mismo secreto en `FACE_SERVICE_API_KEY` y apuntar
 `FACE_SERVICE_URL=http://localhost:8000` durante desarrollo.
 
+## Probar una webcam USB
+
+Una webcam USB se conecta a la Mac (o a la futura Raspberry Pi), no al ESP32.
+Primero comprueba que se vea en QuickTime o Photo Booth. Luego, con la web y
+este servicio ya ejecutándose, usa el probador integrado:
+
+```bash
+cd ia/face-service
+source .venv/bin/activate
+python scripts/probar_webcam.py
+```
+
+Se abre una vista previa. Presiona **Espacio** para enviar el fotograma actual
+a `/api/face/recognize`; presiona **Q** para salir. El script no guarda fotos.
+
+Si abre la cámara interna en vez de la webcam USB, ciérralo y prueba:
+
+```bash
+python scripts/probar_webcam.py --camera 1
+```
+
+En macOS permite que Terminal acceda a **Cámara** en Ajustes del Sistema →
+Privacidad y seguridad → Cámara. El script lee `ROBOT_API_KEY` desde
+`web/.env.local` sin imprimirla.
+
 ## Contenedor
 
 ```bash

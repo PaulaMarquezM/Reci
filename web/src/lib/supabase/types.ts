@@ -314,6 +314,30 @@ export interface Database {
         }
         Relationships: []
       }
+      face_embedding_samples: {
+        Row: {
+          id: string
+          user_id: string
+          embedding_ciphertext: string
+          model: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          embedding_ciphertext: string
+          model: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          embedding_ciphertext?: string
+          model?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       push_tokens: {
         Row: {
           id: string

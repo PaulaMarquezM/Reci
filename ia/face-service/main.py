@@ -43,7 +43,7 @@ def decode_image(raw: bytes) -> np.ndarray:
     return image
 
 
-def extract_embedding(image: np.ndarray) -> list[float]:
+def extract_embedding(image: np.ndarray) -> tuple[list[float], dict[str, float]]:
     try:
         faces: list[dict[str, Any]] = DeepFace.represent(
             img_path=image,
@@ -61,11 +61,35 @@ def extract_embedding(image: np.ndarray) -> list[float]:
     if len(faces) != 1:
         raise HTTPException(status_code=422, detail="La imagen debe contener exactamente un rostro")
 
-    embedding = faces[0].get("embedding")
+    face = faces[0]
+    embedding = face.get("embedding")
     if not isinstance(embedding, list) or not embedding or not all(isinstance(value, (int, float)) for value in embedding):
         raise HTTPException(status_code=500, detail="El modelo devolvió un embedding inválido")
 
-    return [float(value) for value in embedding]
+    facial_area = face.get("facial_area")
+    if not isinstance(facial_area, dict):
+        raise HTTPException(status_code=422, detail="No se pudo medir el rostro de la imagen")
+
+    width = float(facial_area.get("w", 0))
+    height = float(facial_area.get("h", 0))
+    image_height, image_width = image.shape[:2]
+    face_coverage = (width * height) / (image_width * image_height)
+    grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    brightness = float(np.mean(grayscale))
+    sharpness = float(cv2.Laplacian(grayscale, cv2.CV_64F).var())
+
+    if width < 80 or height < 80 or face_coverage < 0.06:
+        raise HTTPException(status_code=422, detail="Acércate un poco: el rostro ocupa muy poco de la imagen")
+    if brightness < 45 or brightness > 220:
+        raise HTTPException(status_code=422, detail="Mejora la iluminación antes de tomar la muestra")
+    if sharpness < 35:
+        raise HTTPException(status_code=422, detail="La imagen está borrosa; mantén la cámara quieta y vuelve a intentar")
+
+    return [float(value) for value in embedding], {
+        "face_coverage": round(face_coverage, 4),
+        "brightness": round(brightness, 2),
+        "sharpness": round(sharpness, 2),
+    }
 
 
 @app.get("/health")
@@ -82,5 +106,5 @@ async def create_embedding(image: Annotated[UploadFile, File(...)]) -> dict[str,
     if len(raw) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="La imagen no puede superar 2 MB")
 
-    embedding = extract_embedding(decode_image(raw))
-    return {"model": MODEL_NAME, "embedding": embedding}
+    embedding, quality = extract_embedding(decode_image(raw))
+    return {"model": MODEL_NAME, "embedding": embedding, "quality": quality}
