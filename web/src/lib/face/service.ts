@@ -1,4 +1,5 @@
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const FACE_SERVICE_TIMEOUT_MS = 180_000
 
 export async function extractFaceEmbedding(image: File) {
   if (!ALLOWED_TYPES.includes(image.type)) throw new Error('Solo se aceptan imágenes JPEG, PNG o WebP')
@@ -16,7 +17,7 @@ export async function extractFaceEmbedding(image: File) {
       method: 'POST',
       headers: { 'x-face-service-key': serviceKey },
       body: formData,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(FACE_SERVICE_TIMEOUT_MS),
     })
   } catch {
     throw new Error('No se pudo contactar al servicio facial')
