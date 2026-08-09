@@ -185,7 +185,7 @@ def ejecutar(clave: str, descripcion: str, construir) -> int:
                                     fase=nombre, metricas=fila)
                 print("Época {epoch} [{fase}] loss={loss:.4f} accuracy={accuracy:.4f} "
                       "val_loss={val_loss:.4f} val_accuracy={val_accuracy:.4f} val_macro_f1={val_macro_f1:.4f}".format(
-                          epoch=fila["epoch"], fase=nombre, **fila
+                          **fila
                       ))
 
         global_best.phase = nombre
