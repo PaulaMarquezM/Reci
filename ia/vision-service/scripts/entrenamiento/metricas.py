@@ -7,6 +7,10 @@ selección de modelo y la parada temprana usan macro-F1, no `accuracy`.
 
 from __future__ import annotations
 
+import csv
+import json
+from pathlib import Path
+
 import numpy as np
 
 from constantes import CLASES
@@ -95,3 +99,25 @@ def imprimir(titulo: str, m: dict) -> None:
         print(f"    {clase:10s} precision {v['precision']:.4f}  "
               f"recall {v['recall']:.4f}  f1 {v['f1']:.4f}  (n={v['soporte']})")
     print(f"    matriz de confusión (filas=real {CLASES}): {m['matriz_confusion']}")
+def guardar_reporte(salida: Path, prefijo: str, metricas: dict) -> None:
+    """Guarda el reporte tabular y la figura de la matriz de confusión."""
+    with (salida / f"{prefijo}_reporte.csv").open("w", newline="", encoding="utf-8") as archivo:
+        escritor = csv.writer(archivo)
+        escritor.writerow(["clase", "precision", "recall", "f1", "soporte"])
+        for clase, valores in metricas.get("metricas_por_clase", {}).items():
+            escritor.writerow([clase, valores["precision"], valores["recall"], valores["f1"], valores["soporte"]])
+        escritor.writerow(["macro", "", "", metricas.get("macro_f1"), metricas.get("total")])
+    import matplotlib.pyplot as plt
+    matriz = np.asarray(metricas["matriz_confusion"])
+    fig, eje = plt.subplots(figsize=(4.5, 4))
+    imagen = eje.imshow(matriz, cmap="Blues")
+    fig.colorbar(imagen, ax=eje)
+    eje.set(xticks=range(len(CLASES)), yticks=range(len(CLASES)), xticklabels=CLASES,
+            yticklabels=CLASES, xlabel="Predicha", ylabel="Real", title=f"Matriz - {prefijo}")
+    for fila in range(len(CLASES)):
+        for columna in range(len(CLASES)):
+            eje.text(columna, fila, int(matriz[fila, columna]), ha="center", va="center")
+    fig.tight_layout()
+    fig.savefig(salida / f"{prefijo}_matriz_confusion.png", dpi=160)
+    fig.savefig(salida / f"{prefijo}_matriz_confusion.pdf")
+    plt.close(fig)
