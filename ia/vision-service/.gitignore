@@ -1,0 +1,5 @@
+# Entornos y artefactos locales de experimentación
+.venv/
+model/runs/**
+!model/runs/.gitkeep
+runs/**
