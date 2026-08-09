@@ -1,0 +1,23 @@
+{
+  "criterio": "máximo val_macro_f1; desempate val_accuracy",
+  "prueba_reservada_consultada": false,
+  "ganador": {
+    "run_id": "mobilenetv3large_20260809_004420_split42_seed1",
+    "arquitectura": "mobilenetv3large",
+    "semilla_particion": 42,
+    "semilla_entrenamiento": 1,
+    "mejor_epoca": 22,
+    "val_loss": 0.15045064687728882,
+    "val_accuracy": 0.9447236061096191,
+    "val_macro_f1": 0.9447236180904524,
+    "precision_plastico": 0.9494949494949495,
+    "recall_plastico": 0.94,
+    "f1_plastico": 0.9447236180904524,
+    "precision_vidrio": 0.94,
+    "recall_vidrio": 0.9494949494949495,
+    "f1_vidrio": 0.9447236180904524,
+    "tflite_bytes": 3486408,
+    "latencia_p50_ms": 19.636600016383454,
+    "latencia_p95_ms": 22.766294979373924
+  }
+}

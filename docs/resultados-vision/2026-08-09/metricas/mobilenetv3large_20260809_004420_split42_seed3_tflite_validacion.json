@@ -1,0 +1,49 @@
+{
+  "bytes": 3486408,
+  "sha256": "48469f1cc92d2e91f8029f3a19ede0c2fef671190429922ad3f54137e8de7625",
+  "cuantizacion_esperada": "int8",
+  "entrada": {
+    "dtype": "int8",
+    "shape": [
+      1,
+      224,
+      224,
+      3
+    ],
+    "quantization": [
+      1.0,
+      -128
+    ]
+  },
+  "salida": {
+    "dtype": "int8",
+    "shape": [
+      1,
+      2
+    ],
+    "quantization": [
+      0.00390625,
+      -128
+    ]
+  },
+  "tipos_tensores": [
+    "int32",
+    "int8"
+  ],
+  "operaciones": [
+    "ADD",
+    "CONV_2D",
+    "DELEGATE",
+    "DEPTHWISE_CONV_2D",
+    "FULLY_CONNECTED",
+    "HARD_SWISH",
+    "MEAN",
+    "MUL",
+    "SOFTMAX"
+  ],
+  "latencia_ms": {
+    "p50": 26.970199978677556,
+    "p95": 27.405314994393848,
+    "n": 8
+  }
+}
