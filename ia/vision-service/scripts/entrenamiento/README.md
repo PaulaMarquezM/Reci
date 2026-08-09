@@ -75,6 +75,47 @@ python scripts/entrenamiento/ejecutar_nueve_corridas.py `
 
 Para ejecutarlo cuando esté autorizado, quitar `--dry-run`. El lanzador ejecuta E1/E2/E3 con semillas 1, 2 y 3 secuencialmente, actualiza el estado compartido y genera `resumen_comparacion.csv`, `resumen_estadistico.json` y `ganador_validacion.json`. Este último selecciona máximo `val_macro_f1` (con `val_accuracy` solo como desempate) y deja constancia de que la prueba reservada no se ha consultado. La selección del ganador usa únicamente validación.
 
+## Regresión por cuantización (criterio 4)
+
+Al exportar, `validar_tflite()` compara el modelo Keras en float32 contra el
+`.tflite` ya cuantizado, sobre las mismas imágenes de validación. El resultado
+queda en `tflite_validacion.json`, bajo `regresion_cuantizacion`:
+
+```json
+"regresion_cuantizacion": {
+  "aceptable": true,
+  "float32": { "macro_f1": 0.9145, "recall_por_clase": { ... } },
+  "int8":     { "macro_f1": 0.9102, "recall_por_clase": { ... } },
+  "caida_macro_f1": 0.0043,
+  "acuerdo": 0.985,
+  "predicciones_cambiadas": 3,
+  "desvio_probabilidad_maximo": 0.4194
+}
+```
+
+Se acepta si el macro-F1 cae ≤ `umbral` (0,02) y el recall de la peor clase cae
+≤ `umbral_recall` (el doble por defecto: el recall de una clase se mide sobre
+~100 imágenes, así que una sola predicción distinta vale un punto entero y no
+debe contar como regresión). Si no se cumple, la consola lo avisa y
+`aceptable` queda en `false`; la corrida **no** se aborta, para poder
+diagnosticar el artefacto.
+
+**Esto no es opcional.** Medido sobre los artefactos de las nueve corridas, la
+cuantización int8 conserva MobileNetV2 (98,5 % de acuerdo) pero destruye a los
+otros dos candidatos:
+
+| Arquitectura | Acuerdo f32↔int8 | Caída de macro-F1 |
+| --- | ---: | ---: |
+| MobileNetV2 | 98,5 % | 0,017 |
+| MobileNetV3-Large | 47,1 % | 0,350 |
+| EfficientNet-B0 | 57,4 % | 0,232 |
+
+La causa es la activación: MobileNetV2 usa ReLU6, acotada y pensada para
+cuantizar; EfficientNet usa Swish y MobileNetV3 hard-swish, sin cota superior.
+Un candidato que gane en validación con el modelo Keras puede perder más de 20
+puntos en el artefacto que realmente se despliega. Para usar esos dos habría
+que exportarlos en `float16` o entrenar con cuantización consciente.
+
 ## TensorBoard
 
 ```powershell

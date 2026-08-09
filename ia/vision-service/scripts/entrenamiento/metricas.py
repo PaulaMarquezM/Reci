@@ -64,8 +64,20 @@ def evaluar(modelo, ds, muestras) -> dict:
     """Matriz de confusión y métricas por clase; macro-F1 como principal."""
     if not muestras:
         return {}
+    return evaluar_probabilidades(modelo.predict(ds, verbose=0), muestras)
 
-    probabilidades = modelo.predict(ds, verbose=0)
+
+def evaluar_probabilidades(probabilidades, muestras) -> dict:
+    """Igual que `evaluar`, pero sobre probabilidades ya calculadas.
+
+    Lo necesita la comprobación de regresión por cuantización, que compara el
+    modelo Keras con el TFLite sobre las mismas imágenes y no puede volver a
+    llamar a `predict` para el segundo.
+    """
+    if not muestras:
+        return {}
+
+    probabilidades = np.asarray(probabilidades)
     predicho = probabilidades.argmax(axis=1)
     real = np.array([e for _, e in muestras])
 

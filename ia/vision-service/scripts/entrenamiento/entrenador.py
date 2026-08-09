@@ -221,7 +221,10 @@ def ejecutar(clave: str, descripcion: str, construir) -> int:
         modelo.save(salida / "model.keras")
         tflite = salida / "model.tflite"
         exportacion.a_tflite(tf, modelo, tflite, args.cuantizar, ds_train)
-        tflite_info = exportacion.validar_tflite(tf, tflite, ds_val, args.cuantizar)
+        tflite_info = exportacion.validar_tflite(
+            tf, tflite, ds_val, args.cuantizar,
+            modelo=modelo, muestras=particiones["validacion"],
+        )
         _escribir_json_atomico(salida / "tflite_validacion.json", tflite_info)
         exportacion.escribir_etiquetas(salida / "labels.txt")
         exportacion.escribir_manifiesto(

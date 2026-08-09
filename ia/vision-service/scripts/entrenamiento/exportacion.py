@@ -43,8 +43,124 @@ def _nombre_dtype(dtype) -> str:
     return np.dtype(dtype).name
 
 
-def validar_tflite(tf, destino: Path, ds_prueba, cuantizacion_esperada: str) -> dict:
-    """Comprueba la cuantización real y mide la latencia del intérprete."""
+def _probabilidades_tflite(tf, destino: Path, ds) -> np.ndarray:
+    """Ejecuta el TFLite sobre un dataset y devuelve probabilidades float32.
+
+    Deshace la cuantización de entrada y salida para que el resultado sea
+    directamente comparable con el `predict` del modelo Keras.
+    """
+    interprete = tf.lite.Interpreter(model_path=str(destino), num_threads=1)
+    interprete.allocate_tensors()
+    entrada = interprete.get_input_details()[0]
+    salida = interprete.get_output_details()[0]
+    e_escala, e_cero = entrada["quantization"]
+    s_escala, s_cero = salida["quantization"]
+
+    salidas = []
+    for lote, _ in ds:
+        for imagen in lote.numpy():
+            valor = imagen[None, ...]
+            if entrada["dtype"] in (np.int8, np.uint8) and e_escala:
+                limites = np.iinfo(entrada["dtype"])
+                valor = np.clip(np.round(valor / e_escala + e_cero), limites.min, limites.max)
+            interprete.set_tensor(entrada["index"], valor.astype(entrada["dtype"], copy=False))
+            interprete.invoke()
+            crudo = interprete.get_tensor(salida["index"])[0].astype(np.float32)
+            if salida["dtype"] in (np.int8, np.uint8) and s_escala:
+                crudo = (crudo - s_cero) * s_escala
+            salidas.append(crudo)
+    return np.asarray(salidas)
+
+
+def medir_regresion_cuantizacion(tf, destino: Path, modelo, ds, muestras,
+                                 *, umbral: float = 0.02,
+                                 umbral_recall: float | None = None) -> dict:
+    """Compara el modelo Keras (float32) contra el TFLite exportado.
+
+    Existe porque el criterio 4 de PROPUESTA-NUEVO-MODELO.md ("sin regresión
+    relevante después de la exportación") no se estaba comprobando: se medían
+    tamaño, formas y latencia, pero nunca la exactitud posterior a cuantizar.
+    Las arquitecturas con activaciones sin cota superior (Swish en
+    EfficientNet, hard-swish en MobileNetV3) pueden perder más de 20 puntos al
+    pasar a int8 sin que ninguna otra comprobación lo note.
+
+    `umbral` se aplica al macro-F1, que es la métrica de selección del
+    proyecto. `umbral_recall` se aplica a la peor clase y por defecto es el
+    doble: el recall de una sola clase se calcula sobre ~100 imágenes, así que
+    su granularidad es de un punto por imagen y una sola predicción distinta
+    no debe considerarse una regresión.
+    """
+    import metricas as met
+
+    if not muestras:
+        return {}
+
+    prob_f32 = np.asarray(modelo.predict(ds, verbose=0))
+    prob_i8 = _probabilidades_tflite(tf, destino, ds)
+    if prob_i8.shape != prob_f32.shape:
+        raise RuntimeError(
+            f"El TFLite devolvió {prob_i8.shape} y Keras {prob_f32.shape}: "
+            "no se pueden comparar"
+        )
+
+    m_f32 = met.evaluar_probabilidades(prob_f32, muestras)
+    m_i8 = met.evaluar_probabilidades(prob_i8, muestras)
+
+    coincide = prob_f32.argmax(axis=1) == prob_i8.argmax(axis=1)
+    desvio = np.abs(prob_f32 - prob_i8).max(axis=1)
+
+    recall_f32 = {c: v["recall"] for c, v in m_f32["metricas_por_clase"].items()}
+    recall_i8 = {c: v["recall"] for c, v in m_i8["metricas_por_clase"].items()}
+    caidas_recall = {c: recall_f32[c] - recall_i8[c] for c in recall_f32}
+    peor_clase = max(caidas_recall, key=caidas_recall.get)
+
+    if umbral_recall is None:
+        umbral_recall = umbral * 2
+
+    caida_macro_f1 = m_f32["macro_f1"] - m_i8["macro_f1"]
+    aceptable = bool(caida_macro_f1 <= umbral
+                     and caidas_recall[peor_clase] <= umbral_recall)
+
+    informe = {
+        "umbral": umbral,
+        "umbral_recall": umbral_recall,
+        "aceptable": aceptable,
+        "float32": {"macro_f1": m_f32["macro_f1"], "exactitud": m_f32["exactitud"],
+                    "recall_por_clase": recall_f32},
+        "int8": {"macro_f1": m_i8["macro_f1"], "exactitud": m_i8["exactitud"],
+                 "recall_por_clase": recall_i8},
+        "caida_macro_f1": float(caida_macro_f1),
+        "caida_exactitud": float(m_f32["exactitud"] - m_i8["exactitud"]),
+        "caidas_recall": {c: float(v) for c, v in caidas_recall.items()},
+        "peor_clase": peor_clase,
+        "acuerdo": float(coincide.mean()),
+        "predicciones_cambiadas": int((~coincide).sum()),
+        "total": int(len(coincide)),
+        "desvio_probabilidad_medio": float(desvio.mean()),
+        "desvio_probabilidad_maximo": float(desvio.max()),
+    }
+
+    if not aceptable:
+        print(f"\n  ⚠ REGRESIÓN POR CUANTIZACIÓN ({destino.name})")
+        print(f"    macro-F1 {m_f32['macro_f1']:.4f} → {m_i8['macro_f1']:.4f} "
+              f"(caída {caida_macro_f1:+.4f}, umbral {umbral})")
+        print(f"    peor recall: {peor_clase} "
+              f"{recall_f32[peor_clase]:.4f} → {recall_i8[peor_clase]:.4f} "
+              f"(umbral {umbral_recall})")
+        print(f"    {informe['predicciones_cambiadas']}/{informe['total']} predicciones "
+              f"cambiaron; desvío máximo {informe['desvio_probabilidad_maximo']:.4f}")
+        print("    El artefacto NO cumple el criterio 4 de la propuesta.")
+    return informe
+
+
+def validar_tflite(tf, destino: Path, ds_prueba, cuantizacion_esperada: str,
+                   *, modelo=None, muestras=None, umbral_regresion: float = 0.02) -> dict:
+    """Comprueba la cuantización real y mide la latencia del intérprete.
+
+    Si se pasan `modelo` y `muestras`, añade además la comparación de exactitud
+    entre el modelo en float32 y el artefacto exportado (criterio 4 de la
+    propuesta), bajo la clave `regresion_cuantizacion`.
+    """
     interprete = tf.lite.Interpreter(model_path=str(destino), num_threads=1)
     interprete.allocate_tensors()
     entrada = interprete.get_input_details()[0]
@@ -88,6 +204,11 @@ def validar_tflite(tf, destino: Path, ds_prueba, cuantizacion_esperada: str) -> 
             raise RuntimeError(f"TFLite no contiene tensores float16 como se solicitó: {info}")
     elif cuantizacion_esperada == "ninguna" and any(tipo in {"int8", "uint8"} for tipo in tipos_tensores):
         raise RuntimeError(f"TFLite tiene cuantización inesperada: {info}")
+
+    if modelo is not None and muestras:
+        info["regresion_cuantizacion"] = medir_regresion_cuantizacion(
+            tf, destino, modelo, ds_prueba, muestras, umbral=umbral_regresion
+        )
     return info
 
 
