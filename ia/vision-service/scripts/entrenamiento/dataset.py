@@ -1,112 +1,122 @@
-"""Descubrimiento del dataset y particiones por sesión completa.
-
-Fotos consecutivas de una misma ráfaga son casi idénticas. Repartirlas entre
-entrenamiento y prueba infla las métricas y esconde el problema real de
-generalización, así que aquí siempre se mueve la **sesión entera**.
-"""
+"""Carga estricta del dataset de trabajo y su partición inmutable."""
 
 from __future__ import annotations
 
-import random
+import csv
+import hashlib
+import json
 from collections import defaultdict
 from pathlib import Path
 
-from constantes import CLASES, EXTENSIONES
+from constantes import CLASES
 
-PARTICIONES = ["entrenamiento", "validacion", "prueba"]
+PARTICIONES = ("entrenamiento", "validacion", "prueba", "auditoria")
+PARTICIONES_ENTRENAMIENTO = ("entrenamiento", "validacion", "prueba")
 
 
-def sesion_de(imagen: Path, raiz_clase: Path) -> tuple[str, bool]:
-    """Devuelve (sesión, se_pudo_deducir) para agrupar fotos relacionadas.
+class ErrorManifiesto(ValueError):
+    """El dataset no cumple el contrato reproducible de partición."""
 
-    Se intenta, en orden:
-      1. subcarpeta dentro de la clase   -> plastico/sesion_mesa_1/foto.jpg
-      2. marca de tiempo del nombre      -> vidrio_20260723_091754_001.jpg
-      3. el nombre completo del archivo  (con advertencia)
+
+def sha256_archivo(ruta: Path) -> str:
+    digest = hashlib.sha256()
+    with ruta.open("rb") as archivo:
+        for bloque in iter(lambda: archivo.read(1024 * 1024), b""):
+            digest.update(bloque)
+    return digest.hexdigest()
+
+
+def _leer_json(ruta: Path) -> dict:
+    try:
+        return json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ErrorManifiesto(f"No se puede leer {ruta}: {error}") from error
+
+
+def cargar_particiones_manifest(
+    dataset_dir: Path,
+    split_manifest: Path,
+    *,
+    manifest_csv: Path | None = None,
+    semilla_particion: int = 42,
+    verificar_hashes: bool = False,
+) -> tuple[dict[str, list[tuple[Path, int]]], dict]:
+    """Carga solo las rutas incluidas en `manifest.csv` y valida ausencia de fuga.
+
+    No descubre archivos por directorios: por diseño, las imágenes ajenas al
+    manifiesto nunca participan. `auditoria` tampoco entra en el retorno.
     """
-    relativa = imagen.relative_to(raiz_clase)
-    if len(relativa.parts) > 1:
-        return relativa.parts[0], True
+    dataset_dir = dataset_dir.resolve()
+    split_manifest = split_manifest.resolve()
+    manifest_csv = (manifest_csv or split_manifest.with_name("manifest.csv")).resolve()
+    split = _leer_json(split_manifest)
+    if split.get("semilla_particion") != semilla_particion:
+        raise ErrorManifiesto(
+            f"Semilla del manifiesto {split.get('semilla_particion')} != {semilla_particion}"
+        )
+    if not manifest_csv.is_file():
+        raise ErrorManifiesto(f"Falta manifest.csv: {manifest_csv}")
 
-    partes = imagen.stem.split("_")
-    for indice in range(len(partes) - 1):
-        fecha, hora = partes[indice], partes[indice + 1]
-        if len(fecha) == 8 and fecha.isdigit() and len(hora) == 6 and hora.isdigit():
-            return f"{fecha}_{hora}", True
+    filas = list(csv.DictReader(manifest_csv.open(encoding="utf-8", newline="")))
+    requeridas = {"clase", "sesion", "sha256", "inclusion", "motivo", "destino"}
+    if not filas or not requeridas.issubset(filas[0]):
+        raise ErrorManifiesto("manifest.csv no contiene las columnas requeridas")
 
-    return imagen.stem, False
-
-
-def descubrir(dataset_dir: Path) -> tuple[dict[str, list[Path]], int]:
-    """Agrupa las imágenes por (clase, sesión). Falla si alguna clase está vacía."""
-    grupos: dict[str, list[Path]] = defaultdict(list)
-    sin_deducir = 0
-
-    for clase in CLASES:
-        raiz = dataset_dir / clase
-        if not raiz.is_dir():
-            raise SystemExit(
-                f"Falta la carpeta '{clase}' en {dataset_dir}.\n"
-                f"El dataset debe tener una subcarpeta por clase: {', '.join(CLASES)}."
+    particiones: dict[str, list[tuple[Path, int]]] = {n: [] for n in PARTICIONES_ENTRENAMIENTO}
+    hashes: dict[str, str] = {}
+    sesiones: dict[str, str] = {}
+    conteos = defaultdict(lambda: defaultdict(int))
+    for fila in filas:
+        if fila.get("inclusion") != "True":
+            continue
+        conjunto, clase, destino, huella = (
+            fila.get("motivo"), fila.get("clase"), fila.get("destino"), fila.get("sha256")
+        )
+        if conjunto not in PARTICIONES or clase not in CLASES or not destino or not huella:
+            raise ErrorManifiesto(f"Fila incluida inválida: {fila}")
+        if huella in hashes:
+            raise ErrorManifiesto(
+                f"Fuga SHA-256 {huella}: {hashes[huella]} y {conjunto}"
             )
-
-        imagenes = [
-            p for p in sorted(raiz.rglob("*"))
-            if p.is_file() and p.suffix.lower() in EXTENSIONES
-        ]
-        if not imagenes:
-            raise SystemExit(
-                f"La carpeta '{clase}' no tiene imágenes ({', '.join(sorted(EXTENSIONES))}).\n"
-                "No se puede entrenar un clasificador binario con una clase vacía."
+        hashes[huella] = conjunto
+        ruta = (dataset_dir / destino).resolve()
+        try:
+            ruta.relative_to(dataset_dir)
+        except ValueError as error:
+            raise ErrorManifiesto(f"Destino fuera del dataset: {destino}") from error
+        if not ruta.is_file():
+            raise ErrorManifiesto(f"Falta imagen declarada: {ruta}")
+        if verificar_hashes and sha256_archivo(ruta) != huella:
+            raise ErrorManifiesto(f"Hash no coincide: {ruta}")
+        sesion = fila.get("sesion") or "externas"
+        if sesion in sesiones and sesiones[sesion] != conjunto:
+            raise ErrorManifiesto(
+                f"Fuga de sesión {sesion}: {sesiones[sesion]} y {conjunto}"
             )
+        sesiones[sesion] = conjunto
+        conteos[conjunto][clase] += 1
+        if conjunto in PARTICIONES_ENTRENAMIENTO:
+            particiones[conjunto].append((ruta, CLASES.index(clase)))
 
-        for imagen in imagenes:
-            sesion, deducida = sesion_de(imagen, raiz)
-            if not deducida:
-                sin_deducir += 1
-            grupos[f"{clase}/{sesion}"].append(imagen)
-
-    return dict(grupos), sin_deducir
-
-
-def particionar(
-    grupos: dict[str, list[Path]],
-    proporciones: tuple[float, float, float],
-    semilla: int,
-) -> dict[str, list[tuple[Path, int]]]:
-    """Reparte sesiones completas entre entrenamiento, validación y prueba."""
-    particiones: dict[str, list[tuple[Path, int]]] = {n: [] for n in PARTICIONES}
-
-    # Se reparte clase por clase para que ninguna partición se quede sin una
-    # de las dos clases cuando hay pocas sesiones.
-    for indice, clase in enumerate(CLASES):
-        claves = sorted(k for k in grupos if k.startswith(f"{clase}/"))
-        random.Random(semilla).shuffle(claves)
-
-        total = sum(len(grupos[k]) for k in claves)
-        objetivos = dict(zip(PARTICIONES, (total * p for p in proporciones)))
-        actuales = {n: 0 for n in PARTICIONES}
-
-        pendientes = list(claves)
-        # Con pocas sesiones, respetar las proporciones exactas dejaría
-        # validación o prueba vacías. Sembrar una sesión en cada una es más
-        # importante que acertar el porcentaje: sin prueba reservada no hay
-        # forma de medir generalización.
-        if len(pendientes) >= len(PARTICIONES):
-            for nombre in ("validacion", "prueba"):
-                clave = pendientes.pop()
-                particiones[nombre].extend((p, indice) for p in grupos[clave])
-                actuales[nombre] += len(grupos[clave])
-
-        # El resto va, grupo por grupo, a la partición con mayor déficit.
-        # Empezar por los grupos grandes evita que el último desbalancee todo.
-        for clave in sorted(pendientes, key=lambda k: -len(grupos[k])):
-            destino = max(PARTICIONES, key=lambda n: objetivos[n] - actuales[n])
-            particiones[destino].extend((p, indice) for p in grupos[clave])
-            actuales[destino] += len(grupos[clave])
-
-    return particiones
+    for conjunto in PARTICIONES_ENTRENAMIENTO:
+        if not particiones[conjunto]:
+            raise ErrorManifiesto(f"Partición vacía: {conjunto}")
+        for clase in CLASES:
+            if not conteos[conjunto][clase]:
+                raise ErrorManifiesto(f"Falta clase {clase} en {conjunto}")
+    declarados = split.get("conteos", {})
+    for conjunto, por_clase in conteos.items():
+        normalizado = {clase: por_clase[clase] for clase in CLASES}
+        if declarados.get(conjunto) and normalizado != declarados[conjunto]:
+            raise ErrorManifiesto(f"Conteos no coinciden en {conjunto}")
+    metadatos = {
+        "split_manifest": str(split_manifest), "manifest_csv": str(manifest_csv),
+        "semilla_particion": semilla_particion,
+        "conteos": {n: {c: conteos[n][c] for c in CLASES} for n in PARTICIONES},
+        "hashes_incluidos": len(hashes), "sesiones": sesiones,
+    }
+    return particiones, metadatos
 
 
 def conteo_por_clase(muestras: list[tuple[Path, int]]) -> dict[str, int]:
-    return {c: sum(1 for _, e in muestras if CLASES[e] == c) for c in CLASES}
+    return {clase: sum(1 for _, etiqueta in muestras if CLASES[etiqueta] == clase) for clase in CLASES}
