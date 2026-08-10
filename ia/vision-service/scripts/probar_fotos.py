@@ -32,22 +32,22 @@ def main():
     args = parser.parse_args()
 
     if not args.key:
-        print("❌ Falta la API key. Pasa --key o exporta VISION_SERVICE_API_KEY.")
+        print("[ERROR] Falta la API key. Pasa --key o exporta VISION_SERVICE_API_KEY.")
         sys.exit(1)
 
     carpeta = Path(args.carpeta)
     if not carpeta.is_dir():
-        print(f"❌ No existe la carpeta: {carpeta}")
+        print(f"[ERROR] No existe la carpeta: {carpeta}")
         sys.exit(1)
 
     fotos = sorted(p for p in carpeta.iterdir() if p.suffix.lower() in EXTENSIONES)
     if not fotos:
-        print(f"❌ No hay fotos ({', '.join(EXTENSIONES)}) en {carpeta}")
+        print(f"[ERROR] No hay fotos ({', '.join(EXTENSIONES)}) en {carpeta}")
         sys.exit(1)
 
-    print(f"\n{'═' * 78}")
+    print(f"\n{'=' * 78}")
     print(f"  Probando {len(fotos)} foto(s) contra {args.url}/v1/classify")
-    print(f"{'═' * 78}\n")
+    print(f"{'=' * 78}\n")
 
     resultados = []
     mime_por_extension = {
@@ -66,7 +66,7 @@ def main():
                         files={"image": (foto.name, f, mime)},
                     )
                 if response.status_code != 200:
-                    print(f"  ❌ {foto.name:30s} -> HTTP {response.status_code}: {response.text[:120]}")
+                    print(f"  [ERROR] {foto.name:30s} -> HTTP {response.status_code}: {response.text[:120]}")
                     resultados.append((foto.name, "ERROR", 0.0, None))
                     continue
 
@@ -74,17 +74,17 @@ def main():
                 material = data["material"]
                 confidence = data["confidence"]
                 objeto = data.get("atributos", {}).get("objeto_reconocido", "?")
-                emoji = {"vidrio": "🟦", "plastico": "🟩", "desconocido": "🟥"}.get(material, "❓")
+                emoji = {"vidrio": "[VID]", "plastico": "[PLA]", "desconocido": "[---]"}.get(material, "[ ? ]")
                 print(f"  {emoji} {foto.name:30s} -> {material:12s} "
                       f"(confianza {confidence:.0%}, objeto={objeto})")
                 resultados.append((foto.name, material, confidence, objeto))
             except httpx.RequestError as e:
-                print(f"  ❌ {foto.name:30s} -> no se pudo contactar el servicio: {e}")
+                print(f"  [ERROR] {foto.name:30s} -> no se pudo contactar el servicio: {e}")
                 resultados.append((foto.name, "ERROR", 0.0, None))
 
-    print(f"\n{'═' * 78}")
+    print(f"\n{'=' * 78}")
     print("  Resumen — revisa a mano si 'material' y 'objeto' coinciden con lo real")
-    print(f"{'═' * 78}")
+    print(f"{'=' * 78}")
     for nombre, material, confianza, objeto in resultados:
         print(f"  {nombre:30s} {material:12s} {confianza:.0%}  {objeto or ''}")
     print()

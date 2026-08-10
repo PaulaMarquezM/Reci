@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +38,20 @@ def a_tflite(tf, modelo, destino: Path, cuantizacion: str, ds_muestra) -> None:
         destino.write_bytes(convertidor.convert())
     finally:
         shutil.rmtree(temporal, ignore_errors=True)
+
+
+def _avisar(texto: str) -> None:
+    """Imprime un aviso sin depender de la codificación de la consola.
+
+    Los mensajes ya evitan caracteres fuera de Latin-1, pero esta red de
+    seguridad garantiza que un aviso nuevo nunca tumbe la corrida: perder un
+    acento es aceptable, abortar un entrenamiento de horas no.
+    """
+    try:
+        print(texto)
+    except UnicodeEncodeError:
+        codificacion = sys.stdout.encoding or "ascii"
+        print(texto.encode(codificacion, errors="replace").decode(codificacion))
 
 
 def _nombre_dtype(dtype) -> str:
@@ -141,15 +156,19 @@ def medir_regresion_cuantizacion(tf, destino: Path, modelo, ds, muestras,
     }
 
     if not aceptable:
-        print(f"\n  ⚠ REGRESIÓN POR CUANTIZACIÓN ({destino.name})")
-        print(f"    macro-F1 {m_f32['macro_f1']:.4f} → {m_i8['macro_f1']:.4f} "
-              f"(caída {caida_macro_f1:+.4f}, umbral {umbral})")
-        print(f"    peor recall: {peor_clase} "
-              f"{recall_f32[peor_clase]:.4f} → {recall_i8[peor_clase]:.4f} "
-              f"(umbral {umbral_recall})")
-        print(f"    {informe['predicciones_cambiadas']}/{informe['total']} predicciones "
-              f"cambiaron; desvío máximo {informe['desvio_probabilidad_maximo']:.4f}")
-        print("    El artefacto NO cumple el criterio 4 de la propuesta.")
+        # Sin caracteres fuera de Latin-1: la consola de Windows usa cp1252 y
+        # los simbolos de advertencia y de flecha lanzaban UnicodeEncodeError
+        # aqui, es decir, el programa se caia justo en el caso que este aviso
+        # existe para reportar.
+        _avisar(f"\n  [!] REGRESION POR CUANTIZACION ({destino.name})")
+        _avisar(f"    macro-F1 {m_f32['macro_f1']:.4f} -> {m_i8['macro_f1']:.4f} "
+                f"(caida {caida_macro_f1:+.4f}, umbral {umbral})")
+        _avisar(f"    peor recall: {peor_clase} "
+                f"{recall_f32[peor_clase]:.4f} -> {recall_i8[peor_clase]:.4f} "
+                f"(umbral {umbral_recall})")
+        _avisar(f"    {informe['predicciones_cambiadas']}/{informe['total']} predicciones "
+                f"cambiaron; desvio maximo {informe['desvio_probabilidad_maximo']:.4f}")
+        _avisar("    El artefacto NO cumple el criterio 4 de la propuesta.")
     return informe
 
 
