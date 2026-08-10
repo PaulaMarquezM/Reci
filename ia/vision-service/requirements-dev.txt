@@ -1,0 +1,21 @@
+# Dependencias de DESARROLLO: entrenamiento, evaluación y pruebas.
+# No entran en la imagen de producción.
+#
+#   pip install -r requirements-dev.txt
+#
+# Incluye las de runtime, así que este archivo es suficiente por sí solo.
+
+-r requirements.txt
+
+# Entrenamiento y exportación de modelos (scripts/entrenamiento/).
+# TensorFlow trae Keras, el conversor a TFLite y su propio intérprete, que
+# `local_model.py` usa como alternativa cuando ai-edge-litert no está.
+tensorflow==2.20.0
+tensorboard==2.20.0
+
+# Gráficas de las corridas: curvas de entrenamiento y matrices de confusión.
+matplotlib==3.10.8
+Pillow==11.1.0
+
+# Suite de pruebas (tests/).
+pytest==8.3.5

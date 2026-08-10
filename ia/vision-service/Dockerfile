@@ -4,6 +4,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
+
+# Solo dependencias de runtime. Las de entrenamiento y pruebas viven en
+# requirements-dev.txt y no entran aquí: el servicio nunca entrena, solo
+# ejecuta model.tflite con ai-edge-litert.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
