@@ -10,6 +10,8 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 
+#include "ReciHttpClient.h"
+
 class ReciRobotCallDispatcher {
  public:
   explicit ReciRobotCallDispatcher(HardwareSerial& mega) : mega_(mega) {}
@@ -84,9 +86,10 @@ class ReciRobotCallDispatcher {
   }
 
   String get(const char* path, int& statusCode) {
-    WiFiClient client;
+    const String url = endpoint(path);
+    ReciHttpClient client(url);
     HTTPClient http;
-    if (!http.begin(client, endpoint(path))) {
+    if (!http.begin(client.get(), url)) {
       statusCode = -1;
       return "";
     }
@@ -100,9 +103,10 @@ class ReciRobotCallDispatcher {
   }
 
   bool post(const char* path, const String& body, int& statusCode) {
-    WiFiClient client;
+    const String url = endpoint(path);
+    ReciHttpClient client(url);
     HTTPClient http;
-    if (!http.begin(client, endpoint(path))) {
+    if (!http.begin(client.get(), url)) {
       statusCode = -1;
       return false;
     }

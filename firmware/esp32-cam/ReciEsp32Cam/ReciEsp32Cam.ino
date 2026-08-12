@@ -12,6 +12,7 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include "esp_camera.h"
+#include <time.h>
 
 #include "ReciEsp32CamSecrets.h"
 #include "RobotCallDispatcher.h"
@@ -43,6 +44,7 @@ constexpr int kMegaTxPin = 14;
 constexpr unsigned long kMegaBaud = 9600;
 constexpr unsigned long kFlashWarmupMs = 220UL;
 constexpr unsigned long kCaptureIntervalMs = 350UL;
+constexpr unsigned long kClockSyncTimeoutMs = 15000UL;
 constexpr uint8_t kCaptureCount = 3;
 constexpr char kBoundary[] = "ReciMaterialBoundary2026";
 
@@ -116,6 +118,21 @@ bool connectWiFi() {
   }
   Serial.print(F("Wi-Fi listo: "));
   Serial.println(WiFi.localIP());
+
+  if (String(RECI_API_BASE_URL).startsWith("https://")) {
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
+    const unsigned long clockDeadline = millis() + kClockSyncTimeoutMs;
+    while (time(nullptr) < 1'700'000'000L &&
+           static_cast<long>(millis() - clockDeadline) < 0) {
+      delay(200);
+    }
+    if (time(nullptr) < 1'700'000'000L) {
+      Serial.println(F("ERROR: no se pudo sincronizar el reloj para HTTPS"));
+      showOnLcd("Error de reloj", "Revisa Internet");
+      return false;
+    }
+    Serial.println(F("HTTPS: reloj y certificado listos."));
+  }
   return true;
 }
 
@@ -166,9 +183,9 @@ camera_fb_t* captureIlluminatedFrame() {
 }
 
 String postClassify(camera_fb_t* frame, int& statusCode) {
-  WiFiClient client;
-  HTTPClient http;
   const String url = String(RECI_API_BASE_URL) + "/api/vision/classify";
+  ReciHttpClient client(url);
+  HTTPClient http;
   String prefix = String("--") + kBoundary + "\r\n";
   prefix += "Content-Disposition: form-data; name=\"record_event\"\r\n\r\nfalse\r\n--";
   prefix += kBoundary;
@@ -177,7 +194,7 @@ String postClassify(camera_fb_t* frame, int& statusCode) {
   const String suffix = String("\r\n--") + kBoundary + "--\r\n";
   MultipartCameraStream payload(prefix, frame->buf, frame->len, suffix);
 
-  if (!http.begin(client, url)) {
+  if (!http.begin(client.get(), url)) {
     statusCode = -1;
     return "";
   }
@@ -214,10 +231,10 @@ String winningMaterial(const MaterialVotes& votes) {
 // de un solo uso para el QR de puntos — ver docs/DECISION-QR-RECLAMO.md.
 String recordRecycleEvent(const String& material, float confidence) {
   lastRecycleLinkedToCall = false;
-  WiFiClient client;
-  HTTPClient http;
   const String url = String(RECI_API_BASE_URL) + "/api/events/recycle";
-  if (!http.begin(client, url)) return "";
+  ReciHttpClient client(url);
+  HTTPClient http;
+  if (!http.begin(client.get(), url)) return "";
 
   JsonDocument body;
   body["material"] = material;
