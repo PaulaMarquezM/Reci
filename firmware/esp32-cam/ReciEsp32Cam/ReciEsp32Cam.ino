@@ -1,4 +1,5 @@
-// Reci · ESP32-CAM AI Thinker · clasificación de residuos + saludo facial
+// Reci · ESP32-CAM compatible AI Thinker (OV2640 u OV3660) · clasificación
+// de residuos + saludo facial
 //
 // El Monitor Serial envía C para iniciar una lectura: la cámara toma tres
 // fotos con iluminación externa. Cada foto aporta un voto del proveedor y
@@ -171,6 +172,13 @@ bool startCamera() {
     Serial.println(F("ERROR: no se pudo iniciar la cámara"));
     showOnLcd("Error de camara", "Revisa Reci");
     return false;
+  }
+  // El driver detecta el sensor conectado. En la placa OV3660 actual debe
+  // verse PID 0x3660; si aparece otro PID, la cámara puede funcionar igual,
+  // pero se debe registrar el hardware real de la prueba.
+  sensor_t* sensor = esp_camera_sensor_get();
+  if (sensor != nullptr) {
+    Serial.printf("Sensor de camara detectado: PID=0x%04X\n", sensor->id.PID);
   }
   Serial.println(F("Camara en QVGA (optimizada)"));
   return true;
@@ -432,6 +440,17 @@ void classifyResidue() {
       }
     }
 
+    // El modelo de comparación es opcional y no se suma a los votos. Permite
+    // contrastar los dos TFLite sobre la misma foto de la ESP32-CAM sin que
+    // afecte la apertura de compuertas.
+    String shadowMaterial = "no_configurado";
+    float shadowConfidence = 0.0F;
+    JsonVariantConst shadowResult = document["vision_local_shadow_result"];
+    if (!shadowResult.isNull()) {
+      shadowMaterial = shadowResult["material"] | "no_disponible";
+      shadowConfidence = shadowResult["confidence"] | 0.0F;
+    }
+
     // Compatibilidad con un servicio de visión anterior durante un despliegue
     // gradual: si no envía vision_votes, conserva su único resultado.
     if (receivedVotes == 0) {
@@ -448,6 +467,15 @@ void classifyResidue() {
           providerConfidence,
           localMaterial.c_str(),
           localConfidence);
+      if (shadowMaterial != "no_configurado") {
+        Serial.printf(
+            "foto %u: comparacion local activo=%s (%.2f) | sombra=%s (%.2f) [sin voto]\n",
+            index + 1,
+            localMaterial.c_str(),
+            localConfidence,
+            shadowMaterial.c_str(),
+            shadowConfidence);
+      }
     }
     if (index + 1 < kCaptureCount) delay(kCaptureIntervalMs);
   }

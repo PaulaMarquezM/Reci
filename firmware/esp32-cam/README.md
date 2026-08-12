@@ -1,9 +1,11 @@
 # ESP32-CAM de Reci
 
-Este sketch es para el módulo **AI Thinker ESP32-CAM**. Para clasificar un
-residuo toma tres fotos con flash, consulta el backend y solo manda abrir una
-compuerta cuando existe una mayoría segura. No guarda fotos ni contiene
-credenciales de Supabase.
+Este sketch usa el mapa de pines compatible con **AI Thinker ESP32-CAM**. La
+placa actual mantiene ese mapa, pero incorpora una cámara **OV3660** en lugar
+de la OV2640 habitual; el driver detecta el sensor automáticamente al iniciar.
+Para clasificar un residuo toma tres fotos, consulta el backend y solo manda
+abrir una compuerta cuando existe una mayoría segura. No guarda fotos ni
+contiene credenciales de Supabase.
 
 ## Antes de compilar
 
@@ -53,10 +55,11 @@ Mega 5V      -> VCC de OLED* + VCC de LCD
 
 ## Cargar la ESP32-CAM
 
-Con el adaptador ESP32-CAM-MB por USB, selecciona **AI Thinker ESP32-CAM** y el
-puerto correcto. Si no carga automáticamente: GPIO0 a GND, pulsa Upload, quita
-GPIO0 de GND al terminar y pulsa Reset. Abre el monitor serial a 115200 para ver
-el resultado de cada reconocimiento.
+Con esta placa USB-C, selecciona **AI Thinker ESP32-CAM** y el puerto correcto.
+En el arranque, el Monitor Serial debe indicar `PID=0x3660`. Si la carga no
+entra automáticamente, usa el botón BOOT o une GPIO0 a GND durante la carga;
+retíralo al terminar y pulsa Reset. Abre el monitor serial a 115200 para ver el
+resultado de cada reconocimiento.
 
 ## Probar clasificación de residuos
 
