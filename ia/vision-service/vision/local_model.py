@@ -114,21 +114,61 @@ class LocalMaterialClassifier:
             labels.append(parts[1].strip() if len(parts) > 1 else parts[0])
         return labels
 
+    @staticmethod
+    def _quantize_input(image: np.ndarray, details: dict[str, Any]) -> np.ndarray:
+        """Convierte una imagen RGB al tipo de entrada que espera TFLite.
+
+        El modelo histórico usa ``float32`` y el MobileNetV3-Large activo se
+        exportó como ``int8``. La escala y el punto cero permiten atender ambos
+        formatos sin cambiar el flujo de inferencia.
+        """
+        dtype = np.dtype(details["dtype"])
+        values = image.astype(np.float32)
+
+        if np.issubdtype(dtype, np.integer):
+            scale, zero_point = details.get("quantization", (0.0, 0))
+            if scale <= 0:
+                raise ValueError("El modelo cuantizado no declara una escala de entrada válida.")
+            bounds = np.iinfo(dtype)
+            values = np.clip(
+                np.round(values / scale + zero_point),
+                bounds.min,
+                bounds.max,
+            )
+
+        return values.astype(dtype, copy=False)
+
+    @staticmethod
+    def _dequantize_output(raw: np.ndarray, details: dict[str, Any]) -> np.ndarray:
+        """Devuelve probabilidades en escala real para salidas int8 o float."""
+        values = np.asarray(raw, dtype=np.float32)
+        dtype = np.dtype(details["dtype"])
+
+        if np.issubdtype(dtype, np.integer):
+            scale, zero_point = details.get("quantization", (0.0, 0))
+            if scale <= 0:
+                raise ValueError("El modelo cuantizado no declara una escala de salida válida.")
+            values = (values - zero_point) * scale
+
+        return values
+
     def predict(self, image_bgr: np.ndarray) -> dict[str, Any]:
         if image_bgr is None or image_bgr.size == 0:
             raise ValueError("La imagen para el modelo local está vacía")
 
         image = cv2.resize(image_bgr, (self.width, self.height))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        tensor = np.expand_dims(image.astype(self.input_details["dtype"]), axis=0)
+        tensor = np.expand_dims(self._quantize_input(image, self.input_details), axis=0)
 
         with self._lock:
             self.interpreter.set_tensor(self.input_details["index"], tensor)
             self.interpreter.invoke()
             raw = self.interpreter.get_tensor(self.output_details["index"])[0]
 
+        probabilities_raw = self._dequantize_output(raw, self.output_details)
+
         probabilities = {
-            label: float(raw[index]) for index, label in enumerate(self.labels)
+            label: float(probabilities_raw[index]) for index, label in enumerate(self.labels)
         }
         material = max(probabilities, key=probabilities.get)
         confidence = probabilities[material]

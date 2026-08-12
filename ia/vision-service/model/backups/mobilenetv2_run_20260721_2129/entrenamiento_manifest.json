@@ -1,0 +1,48 @@
+{
+  "run_id": "run_20260721_2129",
+  "accuracy": 0.9842909574508667,
+  "loss": 0.06684873253107071,
+  "best_val_fase1": 0.9012265801429749,
+  "best_val_fase2": 0.9842909574508667,
+  "stats_dataset": {
+    "train": {
+      "plastico": 13258,
+      "vidrio": 13043
+    },
+    "val": {
+      "plastico": 2343,
+      "vidrio": 2304
+    }
+  },
+  "class_weight": {
+    "0": 0.9918916880374113,
+    "1": 1.008241968872192
+  },
+  "confusion_matrix": [
+    [
+      2299,
+      44
+    ],
+    [
+      29,
+      2275
+    ]
+  ],
+  "metricas_por_clase": {
+    "plastico": {
+      "precision": 0.9875429553264605,
+      "recall": 0.9812206572769953,
+      "f1": 0.984371654891886
+    },
+    "vidrio": {
+      "precision": 0.9810263044415697,
+      "recall": 0.9874131944444444,
+      "f1": 0.9842093878433917
+    }
+  },
+  "clases": [
+    "plastico",
+    "vidrio"
+  ],
+  "entorno": "local"
+}
