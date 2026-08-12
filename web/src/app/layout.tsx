@@ -1,12 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Poppins } from "next/font/google";
 import "./globals.css";
-
-const poppins = Poppins({
-  variable: "--font-poppins",
-  weight: ["400", "500", "600", "700", "800"],
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -34,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${poppins.variable} h-full antialiased`}>
+    <html lang="es" className="h-full antialiased">
       <body className="flex min-h-full flex-col bg-cream text-ink">
         {children}
       </body>

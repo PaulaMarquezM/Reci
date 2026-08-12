@@ -13,6 +13,20 @@ type PendingCall = Pick<
   'id' | 'point_id' | 'status' | 'created_at'
 >
 
+function formatCallTime(value: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Guayaquil',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(new Date(value))
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+  const period = get('dayPeriod').toLowerCase() === 'pm' ? 'p. m.' : 'a. m.'
+
+  return `${get('hour')}:${get('minute')} ${period}`
+}
+
 export function CallForm({
   points,
   initialPending,
@@ -76,11 +90,7 @@ export function CallForm({
             <p className="text-[12.5px] font-semibold opacity-80">Reci está en camino 🚀</p>
             <p className="truncate text-[18px] font-extrabold">{pendingPoint?.name ?? 'Punto del campus'}</p>
             <p className="text-[12.5px] opacity-70">
-              Solicitado a las{' '}
-              {new Date(pending.created_at).toLocaleTimeString('es-EC', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+              Solicitado a las {formatCallTime(pending.created_at)}
             </p>
           </div>
         </div>

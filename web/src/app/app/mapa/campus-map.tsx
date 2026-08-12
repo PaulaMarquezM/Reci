@@ -15,7 +15,7 @@ type RobotPoint = Pick<
 >
 type RobotPosition = Pick<
   Database['public']['Tables']['robot_positions']['Row'],
-  'lat' | 'lng' | 'status' | 'recorded_at'
+  'point_id' | 'lat' | 'lng' | 'status' | 'recorded_at'
 >
 
 // PUCE Sede Manabí, campus PORTOVIEJO (Cdla. 1ro de Mayo, Eudoro Loor y 25 de
@@ -34,12 +34,24 @@ const STATUS_LABEL: Record<RobotPosition['status'], string> = {
 }
 
 // Marcadores como divIcon con CSS: sin assets que se rompan con el bundler.
-const pointIcon = L.divIcon({
-  html: '<span class="reci-point"></span>',
-  className: 'reci-marker',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-})
+// El identificador se mantiene visible incluso con el mapa alejado.
+function pointMarkerLabel(name: string) {
+  if (name === 'Base') return 'B'
+  if (name === 'Parada 1') return '1'
+  if (name === 'Parada 2') return '2'
+  return '•'
+}
+
+function createPointIcon(name: string) {
+  const label = pointMarkerLabel(name)
+  return L.divIcon({
+    html: `<span class="reci-point" aria-label="${name}"><span>${label}</span></span>`,
+    className: 'reci-marker',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  })
+}
+
 const robotIcon = L.divIcon({
   html: '<span class="reci-robot"><span class="reci-robot__dot">♻️</span></span>',
   className: 'reci-marker',
@@ -92,6 +104,15 @@ export default function CampusMap({
     .join('')
     .toUpperCase()
   const status = position?.status ?? 'idle'
+  const currentPoint = position?.point_id
+    ? points.find((point) => point.id === position.point_id)
+    : null
+  const robotLocationLabel = currentPoint?.name ?? 'sin parada asignada'
+  const robotStatusLabel = status === 'moving'
+    ? `RECI va hacia ${robotLocationLabel}`
+    : status === 'charging'
+      ? `RECI carga en ${robotLocationLabel}`
+      : `RECI está en ${robotLocationLabel}`
 
   return (
     <div className="relative h-full w-full">
@@ -102,7 +123,7 @@ export default function CampusMap({
         />
 
         {points.map((p) => (
-          <Marker key={p.id} position={[p.lat, p.lng]} icon={pointIcon}>
+          <Marker key={p.id} position={[p.lat, p.lng]} icon={createPointIcon(p.name)}>
             <Popup>
               <strong>{p.name}</strong>
               {p.notes ? <p className="m-0 text-zinc-500">{p.notes}</p> : null}
@@ -114,7 +135,7 @@ export default function CampusMap({
           <Marker position={[position.lat, position.lng]} icon={robotIcon}>
             <Popup>
               <strong>Reci</strong>
-              <p className="m-0 text-zinc-500">{STATUS_LABEL[position.status]}</p>
+              <p className="m-0 text-zinc-500">{robotStatusLabel}</p>
             </Popup>
           </Marker>
         ) : null}
@@ -151,7 +172,7 @@ export default function CampusMap({
           </span>
           <div className="flex-1">
             <div className="text-[16px] font-bold">
-              {status === 'moving' ? 'Reci va en camino' : status === 'charging' ? 'Reci está cargando' : 'Reci está disponible'}
+              {robotStatusLabel}
             </div>
             <div className="text-[13px]" style={{ color: 'var(--ink-faint)' }}>
               {points.length > 0 ? `${points.length} punto${points.length === 1 ? '' : 's'} de reciclaje en el campus` : 'Aún sin puntos configurados'}

@@ -14,6 +14,7 @@
 #include "esp_camera.h"
 
 #include "ReciEsp32CamSecrets.h"
+#include "RobotCallDispatcher.h"
 
 namespace {
 
@@ -46,6 +47,8 @@ constexpr uint8_t kCaptureCount = 3;
 constexpr char kBoundary[] = "ReciMaterialBoundary2026";
 
 HardwareSerial mega(1);
+ReciRobotCallDispatcher dispatcher(mega);
+bool lastRecycleLinkedToCall = false;
 
 struct MaterialVotes {
   uint8_t plastico = 0;
@@ -205,12 +208,12 @@ String winningMaterial(const MaterialVotes& votes) {
 
 // Registra el resultado final (ya votado) en recycle_events — las 3 fotos
 // individuales de arriba usan record_event=false a propósito, para no
-// crear tres filas por un solo depósito. Como nadie está identificado
-// todavía en este flujo (sin reconocimiento facial aquí), el backend genera
-// un claim_code de un solo uso para el QR de puntos — ver
-// docs/DECISION-QR-RECLAMO.md. Devuelve "" si no hay claim_code (falló el
-// registro, o el material vino "desconocido" y no aplica).
+// crear tres filas por un solo depósito. Si RECI acaba de atender una
+// llamada, se adjuntan call_id y robot_point_id para acreditar directamente
+// a esa persona. Sin una llamada reciente, el backend genera un claim_code
+// de un solo uso para el QR de puntos — ver docs/DECISION-QR-RECLAMO.md.
 String recordRecycleEvent(const String& material, float confidence) {
+  lastRecycleLinkedToCall = false;
   WiFiClient client;
   HTTPClient http;
   const String url = String(RECI_API_BASE_URL) + "/api/events/recycle";
@@ -219,6 +222,7 @@ String recordRecycleEvent(const String& material, float confidence) {
   JsonDocument body;
   body["material"] = material;
   body["confidence"] = confidence;
+  const bool linkedToCall = dispatcher.addRecycleContext(body);
   String payload;
   serializeJson(body, payload);
 
@@ -231,6 +235,13 @@ String recordRecycleEvent(const String& material, float confidence) {
   if (statusCode != HTTP_CODE_CREATED) {
     Serial.printf("ERROR: /events/recycle respondio %d\n", statusCode);
     return "";
+  }
+
+  // El contexto se consume una sola vez. Un segundo depósito necesitará
+  // otra llamada o se entregará mediante un nuevo QR.
+  if (linkedToCall) {
+    lastRecycleLinkedToCall = true;
+    dispatcher.clearRecycleContext();
   }
 
   JsonDocument document;
@@ -293,6 +304,8 @@ void classifyResidue() {
   if (claimCode.length() > 0) {
     sendMega("CMD:QR:" + claimCode);
     showOnLcd(material == "vidrio" ? "VIDRIO" : "PLASTICO", "Escanea el QR");
+  } else if (lastRecycleLinkedToCall) {
+    showOnLcd(material == "vidrio" ? "VIDRIO" : "PLASTICO", "10 pts agregados");
   } else {
     showOnLcd(material == "vidrio" ? "VIDRIO" : "PLASTICO", "Compuerta abierta");
   }
@@ -317,6 +330,7 @@ void setup() {
   showOnLcd("Hola, soy Reci", "Preparando camara");
   if (!startCamera()) return;
   if (!connectWiFi()) return;
+  dispatcher.begin();
   showOnLcd("Hola, soy Reci", "Envia C para leer");
   sendMega("CMD:FACE:idle");
   Serial.println(F("Listo. Envia C por el Monitor Serial para clasificar un residuo."));
@@ -324,4 +338,5 @@ void setup() {
 
 void loop() {
   readClassificationRequest();
+  dispatcher.tick();
 }

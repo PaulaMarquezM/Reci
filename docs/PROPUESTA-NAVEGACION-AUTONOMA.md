@@ -1,7 +1,11 @@
 # Propuesta: cómo Reci se mueve solo entre los puntos del campus
 
-**Fecha:** 20 de julio de 2026
-**Estado:** 🟡 Propuesta — falta decisión de Leonela (hardware) y Andrea (firmware/energía) antes de comprar nada
+**Fecha:** 20 de julio de 2026 (actualizado el mismo día — firmware escrito)
+**Estado:** 🟡 Firmware de la opción recomendada (A+D) ya escrito en
+`firmware/arduino-mega/Navigation.h/.cpp`, **sin probar en hardware real**.
+Falta comprar el sensor, pegar la cinta, y — importante — resolver un choque
+de pines entre este firmware y `docs/CONEXIONES.md` antes de energizar nada
+(ver la advertencia en `CONEXIONES.md` justo antes de ETAPA 3).
 **Por qué este documento:** hoy no existe ninguna definición de CÓMO Reci va a
 seguir una ruta sin que alguien lo empuje. Este documento junta lo que ya está
 decidido (poco), lo que hace falta, y una recomendación concreta para no
@@ -95,20 +99,17 @@ problema de plata, es un problema de que nadie lo había puesto en la lista.
 
 ### Lo que hay que programar (Arduino Mega)
 
-1. **Lectura de los 4-5 sensores IR** → un valor por sensor (sobre línea /
-   fuera de línea).
-2. **Lógica de seguimiento** (bang-bang simple para empezar; PID si hace
-   falta más suavidad): si el sensor derecho ve la línea y el izquierdo no,
-   gira a la derecha, y viceversa.
-3. **Detección de franja de parada**: todos los sensores ven línea a la vez
-   (una franja ancha, no la línea normal) → frena, reporta que llegó.
-4. **Reintegrar los HC-SR04**: si detectan algo a ≤20cm, para los motores sin
-   importar qué esté haciendo el seguimiento de línea — esto ya está en el
-   BOM/plan como criterio de aceptación del acta.
-5. **Reportar posición**: al llegar a un punto marcado, avisar por el mismo
-   canal que ya existe (`sendMega` → ESP32-CAM → `POST /api/robot/position`
-   con el `point_id` correspondiente) — reutiliza lo que Paula ya construyó,
-   no hace falta inventar nada nuevo del lado del backend.
+1. ✅ **Lectura de los 5 sensores IR** → implementado en `Navigation.cpp` (`leerSensor`).
+2. ✅ **Lógica de seguimiento bang-bang** → implementado (`tick()`). PID queda como mejora futura si el bang-bang oscila demasiado.
+3. ✅ **Detección de franja de parada** → implementado (`vistos >= 4` → `Estado::Llegada`).
+4. ⏳ **Reintegrar los HC-SR04**: todavía no está en el código — `Navigation` no los consulta. Falta antes de probar con gente cerca.
+5. ⏳ **Reportar posición** (`CMD:MOVE:<point_id>` desde el ESP32-CAM, aviso de llegada de vuelta): no implementado todavía — depende de que existan los `point_id` reales en Supabase (bloqueante ya anotado en `PLAN.md`). Por ahora `Navigation` se activa a mano por Serial (`M`/`P`) para poder probar el seguimiento de línea en sí mismo, sin esperar a esa integración.
+
+**Sin resolver, bloqueante de seguridad:** el pin map de motores que asume
+`Navigation.cpp` (D5-D12, siguiendo el código actual) no coincide con el
+diagrama físico de `docs/CONEXIONES.md` ETAPA 3 (D2-D7 con ENA/ENB por PWM).
+Verificar cuál es el cableado real antes de energizar — ver la advertencia
+al inicio de esa sección.
 
 ### Cómo se integra con lo que ya existe
 

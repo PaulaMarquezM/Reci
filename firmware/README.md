@@ -108,11 +108,39 @@ derecha (D4), durante 5 s. Cualquier otro valor, incluida una clasificación
 desconocida, no mueve ningún servo. Los motores quedan inicializados y detenidos
 hasta implementar la navegación.
 
+## Ruta demo + OLED
+
+[`arduino-mega/ReciRutaDemo/ReciRutaDemo.ino`](arduino-mega/ReciRutaDemo/ReciRutaDemo.ino)
+es la versión de demostración ya calibrada para la ruta recta: BASE → P1 → P2,
+con 8 s por tramo. Conserva el freno ultrasónico y muestra la carita de RECI en
+la OLED SSD1306: tranquila al esperar, concentrada en movimiento, feliz al
+llegar y en alerta ante un obstáculo. Requiere instalar **Adafruit SSD1306**,
+**Adafruit GFX Library** y **QRCode** desde el gestor de librerías de Arduino.
+El QR se dibuja realmente en la OLED, con margen blanco para que lo lea la PWA. La pantalla
+está conectada al Mega por SDA=20 y SCL=21, normalmente en la dirección `0x3C`.
+Si la OLED no responde, el robot sigue deteniéndose y funcionando; solo informa
+el aviso por el Monitor Serial.
+
+La misma ruta demo también integra las compuertas ya calibradas: `VIDRIO` o
+`PLASTICO` desde el Monitor Serial abren solo una tapa durante 2 s y la cierran
+automáticamente. Las órdenes futuras `CMD:CLASSIFY:vidrio` y
+`CMD:CLASSIFY:plastico` usan el mismo comportamiento al llegar desde la
+ESP32-CAM. Por seguridad, no abre una tapa mientras RECI está en movimiento.
+Además, ningún movimiento manual o automático puede comenzar con una tapa
+abierta; una ruta solicitada en ese momento espera y arranca al cerrarse.
+
+Al terminar una llamada, la ESP32-CAM conserva por 2 minutos su `call_id` y el
+punto de llegada. El primer reciclaje válido se acredita directamente al usuario
+de esa llamada (10 puntos). Si no existe ese contexto, el backend devuelve un
+código y el Mega mantiene su QR visible para reclamar los puntos desde la PWA.
+
 La LCD I2C 16x2 se usa para información conectada con la app: saludo inicial,
 saludo personalizado y ranking. Usa la dirección `0x27` por defecto y comparte
 SDA/SCL con la OLED y el MPU. Instala también la librería **LiquidCrystal I2C**
 desde el gestor de librerías de Arduino. Si el escáner I2C reporta otra dirección
-para la LCD, cambia `0x27` en `arduino-mega/LcdDisplay.h`.
+para la LCD, cambia `kDireccionLcd` en `arduino-mega/ReciRutaDemo/ReciRutaDemo.ino`.
+La ruta demo muestra ya `Hola, soy RECI`, el punto actual, los destinos y las
+alertas de obstáculo en esa LCD.
 
 ## Energía
 

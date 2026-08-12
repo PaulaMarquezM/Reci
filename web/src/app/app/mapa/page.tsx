@@ -18,7 +18,7 @@ export default async function MapaPage() {
     supabase.from('robot_points').select('id, name, lat, lng, notes').eq('active', true),
     supabase
       .from('robot_positions')
-      .select('lat, lng, status, recorded_at')
+      .select('point_id, lat, lng, status, recorded_at')
       .order('recorded_at', { ascending: false })
       .limit(1)
       .maybeSingle(),

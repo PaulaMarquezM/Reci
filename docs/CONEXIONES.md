@@ -128,6 +128,16 @@ ETAPA 8 → Prueba integrada completa
 
 ---
 
+> ⚠️ **Desactualizado — verificar antes de energizar.** El código real de
+> `firmware/arduino-mega/ReciMega.ino` (jul 2026) usa D3/D4 para los servos
+> de las compuertas y D5-D12 para los motores como 8 pines digitales
+> simples, sin ENA/ENB conectados al Mega (sin PWM). El diagrama de abajo
+> documenta D2/D3 para IN1/IN2 y D6/D7 para ENA/ENB — no coincide, y D3 no
+> puede ser servo y motor a la vez. Antes de conectar nada, confirma con
+> multímetro/continuidad cuál mapping es el que realmente está soldado en
+> el robot, y actualiza esta sección para que quede como fuente de verdad
+> real. Ver `firmware/arduino-mega/Navigation.h` para el detalle.
+
 ## ETAPA 3 — Motores con L298N
 
 ### Cómo identificar tus 4 motores TT

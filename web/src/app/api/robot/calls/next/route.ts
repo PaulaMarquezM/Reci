@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   // La más antigua primero: quien llamó antes, se atiende antes.
   const { data: call, error } = await supabase
     .from('call_requests')
-    .select('id, point_id, status, created_at')
+    .select('id, user_id, point_id, status, created_at')
     .in('status', ['pending', 'in_progress'])
     .order('created_at', { ascending: true })
     .limit(1)
@@ -40,6 +40,19 @@ export async function GET(request: NextRequest) {
     return err('El punto de la llamada no existe', 500)
   }
 
+  // La llamada nació desde una sesión autenticada. El nombre viaja junto con
+  // la orden para que, al llegar, RECI pueda saludar sin reconocimiento facial.
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', call.user_id)
+    .maybeSingle()
+
+  if (profileError) {
+    console.error('robot calls next: perfil:', profileError.message)
+    return err('Error al consultar el perfil de la llamada', 500)
+  }
+
   // Respuesta plana a propósito: la parsea ArduinoJson en un ESP32-CAM
   // que ya tiene la RAM comprometida por el framebuffer de la cámara.
   return ok({
@@ -48,6 +61,8 @@ export async function GET(request: NextRequest) {
       status: call.status,
       point_id: point.id,
       point_name: point.name,
+      user_id: call.user_id,
+      greeting_name: profile?.display_name?.trim() || 'reciclador',
       lat: point.lat,
       lng: point.lng,
     },

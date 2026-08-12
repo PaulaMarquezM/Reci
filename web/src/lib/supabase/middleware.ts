@@ -3,6 +3,15 @@ import { NextResponse, type NextRequest } from 'next/server'
 import type { Database } from './types'
 
 export async function updateSession(request: NextRequest) {
+  const protectedPaths = ['/app']
+  const isProtected = protectedPaths.some((path) =>
+    request.nextUrl.pathname.startsWith(path)
+  )
+
+  // La portada y los recursos públicos no necesitan esperar una consulta de
+  // autenticación remota. La sesión se valida al entrar a una ruta protegida.
+  if (!isProtected) return NextResponse.next({ request })
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient<Database>(
@@ -30,10 +39,7 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   // Rutas protegidas: redirigir a /login si no hay sesión
-  const protectedPaths = ['/app']
-  const isProtected = protectedPaths.some(p => request.nextUrl.pathname.startsWith(p))
-
-  if (isProtected && !user) {
+  if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

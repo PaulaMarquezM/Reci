@@ -10,7 +10,8 @@ credenciales de Supabase.
 1. Instala `esp32 by Espressif Systems` desde el Gestor de tarjetas de Arduino
    IDE y `ArduinoJson` desde el Gestor de bibliotecas.
 2. Copia `ReciEsp32CamSecrets.h.example` a `ReciEsp32CamSecrets.h` y rellena
-   Wi-Fi, IP local de la Mac y `ROBOT_API_KEY`.
+   Wi-Fi, URL del backend y `ROBOT_API_KEY`. Ese archivo ya está ignorado por
+   Git: nunca lo publiques ni lo pegues en un chat.
 3. En la Mac, ejecuta la web con acceso de red:
 
    ```bash
@@ -20,6 +21,12 @@ credenciales de Supabase.
 
    `RECI_API_BASE_URL` debe usar la IP de la Mac, no `127.0.0.1`. Puedes ver la
    IP Wi-Fi de la Mac con `ipconfig getifaddr en0`.
+
+   Esta es la forma correcta de hacer la **primera prueba**, porque la Mac, la
+   ESP32 y la app comparten el mismo Wi-Fi. Cuando se publique la web en Vercel,
+   se sustituye por `https://tu-proyecto.vercel.app`; antes de eso hay que
+   activar TLS en el sketch, no se debe intentar usar `WiFiClient` normal con
+   una URL `https`.
 
 ## Cableado ESP32-CAM ↔ Mega
 
@@ -69,3 +76,24 @@ el resultado de cada reconocimiento.
 
 Las fotos de esta validación no crean eventos ni puntos: la persistencia debe
 ocurrir una sola vez después del voto mayoritario.
+
+## Probar primero la conexión con la app (sin cámara ni movimiento)
+
+1. Con RECI físicamente en **BASE**, carga `ReciRutaDemo.ino` al Mega. Antes de
+   conectar la ESP32, deja `kEsp32CamConectada = false`.
+2. Carga este sketch a la ESP32-CAM y confirma en su Monitor Serial (115200)
+   que muestra `Wi-Fi listo: ...`. Su primer mensaje hará aparecer en el LCD
+   del Mega `Hola, soy RECI / Envia C para leer`: eso confirma el cable serie.
+3. Solo entonces cambia en el Mega `kEsp32CamConectada` a `true` y vuelve a
+   cargarlo. Nunca lo actives con RX2/D17 desconectado, porque un pin flotante
+   se interpreta como órdenes aleatorias.
+4. Reinicia ambos equipos, abre el Monitor Serial del Mega a **9600**, y envía
+   `SET:BASE` una sola vez. Ese paso confirma la posición real; no se hace de
+   forma automática porque RECI no tiene GPS ni sensores de línea.
+5. Desde la web, usa el botón para llamar a RECI a P1 o P2. La ESP consulta la
+   llamada cada tres segundos, envía la orden al Mega y, al llegar, el LCD
+   muestra `Hola, <nombre> / Soy RECI`.
+
+Para esta primera prueba, no llames desde la app hasta que las ruedas estén
+levantadas o tengas el recorrido despejado. La app no sustituye el freno físico
+ni el ultrasónico.

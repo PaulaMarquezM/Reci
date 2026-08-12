@@ -96,6 +96,8 @@ El corazón del loop. Pregunta cada ~3 segundos.
     "status": "pending",
     "point_id": "c9f0f895-fb98-4b1f-bcb0-1a2b3c4d5e6f",
     "point_name": "Biblioteca",
+    "user_id": "2a4d7f9d-2d3b-44ab-a170-2a9982dd55c4",
+    "greeting_name": "Paula",
     "lat": -1.0512345,
     "lng": -80.4512345
   }
@@ -112,6 +114,9 @@ Notas para el firmware:
   campo `status`: si ya dice `in_progress`, no vuelvas a mandar el update de
   aceptación, sigue manejando.
 - `lat`/`lng` son las del punto destino, sacadas de la tabla `robot_points`.
+- `greeting_name` pertenece a quien inició sesión y llamó a RECI. Al llegar,
+  el firmware puede mostrar `CMD:LCD:Hola, Paula|Soy RECI` sin usar
+  reconocimiento facial.
 
 ---
 
@@ -201,7 +206,10 @@ POST /api/vision/classify        → clasificar UNA foto (ver ia/vision-service)
                                     (ver firmware/esp32-cam/ReciEsp32Cam.ino).
 POST /api/compartments/update    → {"id": "vidrio"|"plastico", "fill_percent": 0-100}
 POST /api/events/recycle         → registrar UNA VEZ el resultado ya votado.
-                                    Si no hay user_id, la respuesta trae
+                                    Envía call_id cuando el reciclaje corresponde
+                                    a una llamada de la PWA: el backend asigna el
+                                    evento a esa cuenta. Sin call_id ni user_id,
+                                    la respuesta trae
                                     "event.claim_code" — mándalo al Mega como
                                     CMD:QR:<code> para que muestre el QR de
                                     puntos (ver DECISION-QR-RECLAMO.md).
@@ -234,6 +242,18 @@ para mostrar, por ejemplo:
 
 El Mega no consulta Supabase ni conoce credenciales: solo recibe `CMD:LCD` por
 Serial2. Si no hay identificación facial, muestra el saludo genérico.
+
+Cuando la llamada vino de la PWA, no hace falta reconocimiento facial: la
+respuesta de `GET /api/robot/calls/next` ya trae `greeting_name`. El puente
+conserva ese nombre para que, al recibir `EVENT:ARRIVED:<punto>`, la versión
+del Mega que tenga OLED/LCD pueda mostrar:
+
+```
+CMD:LCD:Hola, Paula|Soy RECI
+```
+
+El sketch de ruta demo aún no controla la OLED; este saludo se activa al
+integrarlo con el firmware del Mega que sí maneja la pantalla.
 
 ---
 

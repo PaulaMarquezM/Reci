@@ -103,11 +103,12 @@ Las 8 fases del acta, traducidas a entregables concretos y quién los hace. Las 
 **Objetivo:** un chasis que se mueve entre dos puntos sin compuertas ni IA.
 
 - [ ] **Leonela** · ensamble chasis + ruedas + 2×L298N + 4 motorreductores TT
-- [ ] **Leonela** · firmware Arduino Mega base: `forward / backward / stop / turn`
-- [ ] **Leonela** · sensores HC-SR04 con parada automática a ≤ 20 cm
+- [x] **Firmware de navegación escrito** — `firmware/arduino-mega/Navigation.h/.cpp`: sigue línea con 5 sensores IR (bang-bang) + detecta franja de parada. Activable a mano por Serial (`M`/`P`) para probar sin depender de los puntos del campus en Supabase. Ver `docs/PROPUESTA-NAVEGACION-AUTONOMA.md`. **⚠️ Sin probar en hardware real — y hay un choque de pines sin resolver entre este firmware y `docs/CONEXIONES.md` ETAPA 3 (D3 aparece como servo Y como motor en documentos distintos). Verificar con el robot físico antes de energizar.**
+- [ ] **Leonela** · comprar módulo sensor de línea IR de 5 canales (~$4-6, no está en el BOM original) y confirmar/corregir el pin map real contra `CONEXIONES.md`
+- [ ] **Leonela** · sensores HC-SR04 con parada automática a ≤ 20 cm — todavía no está en el código, solo cableado físicamente
 - [ ] **Leonela** · pantalla OLED 0.96" I2C mostrando estado del robot — la cara de Reci ya está escrita en `firmware/arduino-mega/Display.h` (`CMD:FACE:<estado>`), falta probarla contra el OLED real
 - [ ] **Andrea** · Power Bank (lógica) + LiPo (motores) + LM2596 (regulador) + cableado
-- [ ] **Andrea** · prueba de movimiento punto-a-punto sobre cinta marcada
+- [ ] **Andrea** · prueba de movimiento punto-a-punto sobre cinta marcada — ahora sí hay firmware que probar, ver arriba
 
 ### Fase 3 — Sistema IA y experto · semanas 4–6
 
