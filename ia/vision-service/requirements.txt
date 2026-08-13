@@ -1,3 +1,8 @@
+# Dependencias de RUNTIME: lo que necesita el servicio para responder
+# /v1/classify. Es lo único que instala el Dockerfile.
+#
+# Para entrenar, evaluar o ejecutar las pruebas, usa requirements-dev.txt.
+
 fastapi==0.128.0
 uvicorn[standard]==0.40.0
 python-multipart==0.0.22
@@ -5,3 +10,9 @@ python-dotenv==1.2.1
 httpx==0.28.1
 opencv-python-headless==4.10.0.84
 numpy==2.2.6
+
+# Intérprete TFLite para el modelo local. `vision/local_model.py` lo prefiere
+# sobre tflite-runtime y sobre TensorFlow completo, que solo queda como último
+# recurso. Basta este paquete para servir model.tflite: TensorFlow entero son
+# ~600 MB de imagen que el servicio nunca usa.
+ai-edge-litert==2.1.6

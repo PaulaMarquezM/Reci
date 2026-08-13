@@ -1,11 +1,12 @@
 # vision/classifier.py
-# Llama a Claude o Gemini para extraer los 9 atributos visuales de una imagen,
+# Llama a Claude, Gemini u OpenAI para extraer los 9 atributos visuales de una imagen,
 # y los refina con heurísticas OpenCV (vision/visual_heuristics.py).
 #
 # Adaptado de dev/RECI (vision/attribute_extractor.py). Diferencias:
-# - Sin contexto de un clasificador TM local (la ESP32-CAM no corre ningún
-#   modelo — ver docs/DECISION-SERVICIO-VISION.md) — se usa el prompt base
-#   directo, sin la sección "CONTEXTO DEL CLASIFICADOR RÁPIDO".
+# - El proveedor se mantiene independiente del clasificador TFLite local:
+#   ambos analizan la misma foto y main.py emite sus votos por separado.
+#   Esto permite medir seis predicciones reales por depósito sin que una
+#   señal contamine a la otra.
 # - Sin lógica de cámara/hilo — este servicio es un endpoint HTTP síncrono.
 # - Reintentos recortados (esta llamada ahora es parte de una cadena en vivo
 #   ESP32-CAM → Next.js → aquí → Claude/Gemini; cada reintento le suma
@@ -30,7 +31,7 @@ logger = logging.getLogger("reci.vision")
 
 
 class VisionProviderError(RuntimeError):
-    """El proveedor de visión (Claude/Gemini) no respondió tras los reintentos."""
+    """El proveedor de visión no respondió tras los reintentos."""
 
 
 PROMPT_BASE = """Eres el módulo de visión del sistema experto Reci, un tacho inteligente de reciclaje universitario en Ecuador.
@@ -132,6 +133,24 @@ GEMINI_URL = (
 )
 CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 CLAUDE_VERSION = "2023-06-01"
+OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+
+_ATRIBUTOS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "objeto_reconocido": {"type": "string"},
+        "confianza_ml": {"type": "string", "enum": ["alta", "media", "baja"]},
+        "transparencia": {"type": "string", "enum": ["alta", "media", "baja", "ninguna"]},
+        "color": {"type": "string", "enum": ["transparente", "ambar", "verde_oscuro", "blanco_opaco", "negro", "variado_vivo", "marron_tierra", "metalico"]},
+        "forma": {"type": "string", "enum": ["cilindrica_delgada", "cilindrica_estandar", "cilindrica_ancha", "conica", "rectangular_plana", "irregular"]},
+        "brillo": {"type": "string", "enum": ["alto_nitido", "medio_difuso", "bajo", "metalico"]},
+        "tapa": {"type": "string", "enum": ["rosca_plastico", "corona_metalica", "twist_off_metalica", "tapa_ancha_metalica", "domo_plastico", "sin_tapa", "sellado"]},
+        "textura": {"type": "string", "enum": ["lisa_brillante", "lisa_sin_brillo", "rugosa", "fibrosa"]},
+        "rigidez": {"type": "string", "enum": ["rigido", "flexible", "indefinido"]},
+    },
+    "required": ["objeto_reconocido", "confianza_ml", "transparencia", "color", "forma", "brillo", "tapa", "textura", "rigidez"],
+}
 
 _GENERATION_CONFIG = {
     "temperature":      0.1,
@@ -146,9 +165,35 @@ _GENERATION_CONFIG = {
 MAX_REINTENTOS = 1
 TIMEOUT_SEGUNDOS = 20.0
 
+# Veto aislado para la integración OpenAI. La heurística compartida puede
+# convertir una botella colorida en "lata" por su geometría/etiqueta; si la
+# propia API entregó señales fuertes de PET, conservamos esa lectura sin
+# modificar visual_heuristics.py ni el flujo de Claude/Gemini.
+_OPENAI_PET_OBJECTS = frozenset({
+    "botella_agua", "botella_gaseosa", "botella_energizante",
+    "botella_jugo_plastico", "botella_fioravanti", "botella_cola_gallito",
+})
+
+
+def _revocar_falso_lata_openai(original: dict, refinado: dict) -> dict:
+    if refinado.get("objeto_reconocido") != "lata":
+        return refinado
+    if original.get("objeto_reconocido") not in _OPENAI_PET_OBJECTS:
+        return refinado
+    if original.get("tapa") != "rosca_plastico":
+        return refinado
+    if original.get("transparencia") not in ("alta", "media"):
+        return refinado
+
+    logger.warning(
+        "veto OpenAI: heurística convirtió botella PET en lata | objeto=%s",
+        original.get("objeto_reconocido"),
+    )
+    return original
+
 
 class VisionClassifier:
-    """Llama a Claude o Gemini y devuelve los 9 atributos, ya refinados con OpenCV."""
+    """Llama a un proveedor y devuelve los 9 atributos, refinados con OpenCV."""
 
     def __init__(self):
         config = resolver_config_vision()
@@ -156,11 +201,12 @@ class VisionClassifier:
         self.proveedor_label = config["proveedor_label"]
         self.modelos = config["modelos"]
         self.modelo_primario = config["modelo_primario"]
-        self.api_key = (
-            os.environ.get("ANTHROPIC_API_KEY", "")
-            if self.vision_api == "claude"
-            else os.environ.get("GEMINI_API_KEY", "")
-        )
+        key_by_provider = {
+            "claude": "ANTHROPIC_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+            "openai": "OPENAI_API_KEY",
+        }
+        self.api_key = os.environ.get(key_by_provider[self.vision_api], "")
         self.advertencias = config["advertencias"]
 
     @staticmethod
@@ -178,6 +224,21 @@ class VisionClassifier:
             if inicio != -1 and fin > inicio:
                 return json.loads(texto[inicio:fin])
             raise
+
+    @staticmethod
+    def _extraer_texto_openai(respuesta: dict) -> str:
+        """Extrae texto de Responses API, incluso si no entrega output_text resumido."""
+        texto = (respuesta.get("output_text") or "").strip()
+        if texto:
+            return texto
+
+        for salida in respuesta.get("output", []):
+            if salida.get("type") != "message":
+                continue
+            for contenido in salida.get("content", []):
+                if contenido.get("type") == "output_text" and contenido.get("text"):
+                    return contenido["text"].strip()
+        raise ValueError("OpenAI: respuesta sin texto de salida")
 
     def _payload_gemini(self, imagen_b64: str, mime_type: str) -> dict:
         return {
@@ -201,6 +262,31 @@ class VisionClassifier:
                     {"type": "text", "text": PROMPT_BASE},
                 ],
             }],
+        }
+
+    def _payload_openai(self, imagen_b64: str, mime_type: str, modelo: str) -> dict:
+        return {
+            "model": modelo,
+            "input": [{
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": PROMPT_BASE},
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{mime_type};base64,{imagen_b64}",
+                        "detail": "low",
+                    },
+                ],
+            }],
+            "reasoning": {"effort": "low"},
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "atributos_residuo",
+                    "strict": True,
+                    "schema": _ATRIBUTOS_SCHEMA,
+                }
+            },
         }
 
     def _llamar_claude(self, imagen_b64: str, mime_type: str) -> str:
@@ -263,27 +349,62 @@ class VisionClassifier:
                     break
         raise VisionProviderError(f"Gemini no respondió: {ultimo_error}")
 
+    def _llamar_openai(self, imagen_b64: str, mime_type: str) -> str:
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        ultimo_error = None
+        for modelo in self.modelos:
+            for intento in range(MAX_REINTENTOS + 1):
+                try:
+                    with httpx.Client(timeout=TIMEOUT_SEGUNDOS) as client:
+                        response = client.post(
+                            OPENAI_RESPONSES_URL,
+                            headers=headers,
+                            json=self._payload_openai(imagen_b64, mime_type, modelo),
+                        )
+                    response.raise_for_status()
+                    texto = self._extraer_texto_openai(response.json())
+                    logger.info("vision openai ok | modelo=%s", modelo)
+                    return texto
+                except httpx.HTTPStatusError as e:
+                    ultimo_error = e
+                    status = e.response.status_code
+                    if status in (429, 500, 502, 503, 504) and intento < MAX_REINTENTOS:
+                        time.sleep(2.0)
+                        continue
+                    logger.warning("vision openai fallo | modelo=%s status=%s", modelo, status)
+                    break
+                except (httpx.RequestError, ValueError) as e:
+                    ultimo_error = e
+                    logger.warning("vision openai error | modelo=%s error=%s", modelo, e)
+                    break
+        raise VisionProviderError(f"OpenAI no respondió: {ultimo_error}")
+
     def clasificar(self, imagen_bytes: bytes, mime_type: str) -> dict:
         """
         Recibe los bytes crudos de la imagen (JPEG/PNG/WebP) y devuelve los
         9 atributos visuales, ya refinados con OpenCV (lata, vidrio, metal).
 
-        Lanza VisionProviderError si Claude/Gemini no responde — sin
-        clasificador local de respaldo en este servicio (ver
-        docs/DECISION-SERVICIO-VISION.md), así que el llamador debe tratarlo
-        como "sin clasificación posible" en vez de reintentar indefinidamente.
+        Lanza VisionProviderError si el proveedor no responde. El modelo local
+        es binario y no reconoce objetos rechazables (lata, orgánico, cartón),
+        así que no abre una compuerta por sí solo cuando el proveedor falla.
         """
         imagen_b64 = base64.b64encode(imagen_bytes).decode("utf-8")
 
         if self.vision_api == "claude":
             texto = self._llamar_claude(imagen_b64, mime_type)
-        else:
+        elif self.vision_api == "gemini":
             texto = self._llamar_gemini(imagen_b64, mime_type)
+        else:
+            texto = self._llamar_openai(imagen_b64, mime_type)
 
         atributos = self._parsear_json(texto)
+        atributos_originales = dict(atributos)
 
         img_bgr = cv2.imdecode(np.frombuffer(imagen_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
         if img_bgr is not None:
             atributos = refinar_atributos_api(atributos, img_bgr, clase_tm=None, prob_tm=None)
+
+        if self.vision_api == "openai":
+            atributos = _revocar_falso_lata_openai(atributos_originales, atributos)
 
         return atributos

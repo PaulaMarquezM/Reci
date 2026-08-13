@@ -60,24 +60,76 @@ def _flip_de_pet_a_vidrio(antes: dict, despues: dict) -> bool:
 def _corregir_gatorade_ambiguo(atributos: dict, clase_tm: str,
                                prob_tm: float) -> dict:
     """
-    Gatorade PET con tapa metálica mal etiquetada por Claude cuando TM
-    no es concluyente (prueba12 en cámara).
+    Gatorade bidireccional:
+    - PET: tapa plástica de color mal leída como metálica + brillo difuso
+      → rosca_plastico (salvo TM vidrio ≥90%).
+    - Vidrio: brillo nítido + tapa mal leída como rosca_plastico
+      → twist_off_metalica (salvo TM plástico ≥92%).
     """
     out = dict(atributos)
     obj = out.get("objeto_reconocido", "")
     tapa = out.get("tapa", "")
-    tm_inseguro = (
-        (clase_tm == "vidrio" and (prob_tm or 0) < 0.70)
-        or (clase_tm == "plastico" and prob_tm is not None and prob_tm < 0.85)
-    )
+    brillo = out.get("brillo", "")
+    if obj != "botella_gatorade":
+        return out
+
+    tm_vidrio_fuerte = clase_tm == "vidrio" and (prob_tm or 0) >= 0.90
+    tm_plastico_fuerte = clase_tm == "plastico" and (prob_tm or 0) >= 0.92
+
+    # Vidrio real: brillo nítido + API confundió tapa metálica de color con rosca.
     if (
-        obj == "botella_gatorade"
-        and tapa in ("twist_off_metalica", "tapa_ancha_metalica", "corona_metalica")
-        and out.get("brillo") == "medio_difuso"
-        and tm_inseguro
+        brillo == "alto_nitido"
+        and tapa == "rosca_plastico"
+        and not tm_plastico_fuerte
     ):
+        out["tapa"] = "twist_off_metalica"
+        return out
+
+    # PET: tapa plástica de color mal leída como metálica.
+    if tapa not in ("twist_off_metalica", "tapa_ancha_metalica", "corona_metalica"):
+        return out
+    if brillo != "medio_difuso":
+        return out
+    if tm_vidrio_fuerte:
+        return out
+
+    out["tapa"] = "rosca_plastico"
+    out["confianza_ml"] = "media"
+    return out
+
+
+def _corregir_enjuague_y_atomizador(atributos: dict) -> dict:
+    """Colgate/Listerine y sprays: tapa casi siempre rosca plástica; nunca vidrio."""
+    out = dict(atributos)
+    obj = out.get("objeto_reconocido", "")
+    if obj == "botella_enjuague_bucal" and out.get("tapa") == "sin_tapa":
         out["tapa"] = "rosca_plastico"
-        out["confianza_ml"] = "media"
+        if out.get("brillo") == "alto_nitido":
+            out["brillo"] = "medio_difuso"
+    if obj == "botella_atomizador":
+        if out.get("tapa") in ("sin_tapa", "corona_metalica", "twist_off_metalica"):
+            out["tapa"] = "rosca_plastico"
+        if out.get("brillo") == "alto_nitido":
+            out["brillo"] = "medio_difuso"
+    return out
+
+
+def _corregir_vaso_espuma_como_carton(atributos: dict) -> dict:
+    """Corrige vasos de espuma blancos que la API clasificó como cartón."""
+    out = dict(atributos)
+    if out.get("objeto_reconocido") != "vaso_carton":
+        return out
+    if out.get("color") != "blanco_opaco":
+        return out
+    if out.get("forma") not in ("conica", "cilindrica_ancha", "cilindrica_estandar"):
+        return out
+
+    out["objeto_reconocido"] = "vaso_plastico_blanco"
+    out["rigidez"] = "rigido"
+    if out.get("textura") == "fibrosa":
+        out["textura"] = "lisa_sin_brillo"
+    if out.get("brillo") == "bajo":
+        out["brillo"] = "medio_difuso"
     return out
 
 
@@ -87,6 +139,8 @@ def _aplicar_veto_consenso_api(antes: dict, despues: dict,
                                prob_tm: float = None) -> dict:
     """Revoca un flip indebido PET→vidrio (A4)."""
     despues = _corregir_gatorade_ambiguo(despues, clase_tm, prob_tm)
+    despues = _corregir_enjuague_y_atomizador(despues)
+    despues = _corregir_vaso_espuma_como_carton(despues)
     if _api_lectura_pet_fiable(antes) and _flip_de_pet_a_vidrio(antes, despues):
         return dict(antes)
     if tm_seguro_plastico and _flip_de_pet_a_vidrio(antes, despues):
@@ -370,6 +424,15 @@ def refinar_atributos_api(atributos: dict, img_bgr: np.ndarray,
         "botella_jugo_plastico", "desconocido",
     )
     api_dice_transparente_pero_no_lo_es = trans in ("alta", "media") and es_opaco_real
+    # Una botella reconocida con cuello/tapa de rosca y cuerpo transparente
+    # no es una lata. Las etiquetas coloridas pueden volver opaca una gran
+    # parte de la imagen y la geometría global por sí sola no es evidencia de
+    # metal (regresión observada con botellas PET de Sprite).
+    api_pet_con_rosca_visible = (
+        api_dice_botella
+        and tapa == "rosca_plastico"
+        and trans in ("alta", "media")
+    )
 
     forma_lata = (
         cap > 0.06
@@ -479,14 +542,21 @@ def refinar_atributos_api(atributos: dict, img_bgr: np.ndarray,
         # TM muy seguro de plástico: solo forzar lata si API contradice transparencia
         parece_lata = (
             obj == "lata"
-            or (api_dice_transparente_pero_no_lo_es and forma_lata and aspect < 1.40)
+            or (
+                not api_pet_con_rosca_visible
+                and api_dice_transparente_pero_no_lo_es
+                and forma_lata
+                and aspect < 1.40
+            )
         )
     else:
         parece_lata = (
             obj == "lata"
-            or (metal_plateado and clase_tm != "vidrio")
-            or metal_mate
+            or (not api_pet_con_rosca_visible and metal_plateado and clase_tm != "vidrio")
+            or (not api_pet_con_rosca_visible and metal_mate)
             or (
+                not api_pet_con_rosca_visible
+                and
                 forma_lata
                 and clase_tm != "vidrio"
                 and (
@@ -494,7 +564,6 @@ def refinar_atributos_api(atributos: dict, img_bgr: np.ndarray,
                     or metal_mate
                     or api_dice_transparente_pero_no_lo_es
                     or (trans in ("ninguna", "baja", "media") and tapa in ("rosca_plastico", "sin_tapa", "sellado") and aspect < 1.35)
-                    or (sat > 45 and es_opaco_real and api_dice_botella and aspect < 1.35)
                 )
             )
         )
@@ -517,7 +586,12 @@ def refinar_atributos_api(atributos: dict, img_bgr: np.ndarray,
         return _aplicar_veto_consenso_api(
             atributos_originales, out, tm_seguro_plastico, clase_tm, prob_tm)
 
-    if api_dice_transparente_pero_no_lo_es and api_dice_botella and forma_lata:
+    if (
+        not api_pet_con_rosca_visible
+        and api_dice_transparente_pero_no_lo_es
+        and api_dice_botella
+        and forma_lata
+    ):
         out.update({
             "objeto_reconocido": "lata",
             "transparencia":     "ninguna",

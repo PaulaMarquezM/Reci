@@ -1,8 +1,8 @@
 # vision/vision_config.py
-# Configuración y validación del proveedor de visión (Claude / Gemini)
-# Adaptado de dev/RECI (vision/vision_config.py) — sin referencias a TM local:
-# este servicio no tiene modelo .tflite, la ESP32-CAM no envía contexto de un
-# clasificador local.
+# Configuración y validación del proveedor de visión (Claude / Gemini / OpenAI)
+# Adaptado de dev/RECI (vision/vision_config.py). Esta configuración selecciona
+# el proveedor remoto; el MobileNetV2 local se configura por separado y ambos
+# resultados se emiten como votos independientes.
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ _GEMINI_DEFAULTS = [
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
 ]
+_OPENAI_DEFAULT = "gpt-5.6-luna"
 
 
 def normalizar_claude_model(modelo: str) -> tuple[str, list[str]]:
@@ -57,10 +58,12 @@ def resolver_config_vision() -> dict:
             vision_api = "claude"
         elif os.environ.get("GEMINI_API_KEY"):
             vision_api = "gemini"
+        elif os.environ.get("OPENAI_API_KEY"):
+            vision_api = "openai"
         else:
             raise ValueError(
-                "Configura ANTHROPIC_API_KEY o GEMINI_API_KEY "
-                "(opcional: VISION_API=claude|gemini)"
+                "Configura ANTHROPIC_API_KEY, GEMINI_API_KEY u OPENAI_API_KEY "
+                "(opcional: VISION_API=claude|gemini|openai)"
             )
 
     if vision_api == "claude":
@@ -84,8 +87,17 @@ def resolver_config_vision() -> dict:
         modelos = list(_GEMINI_DEFAULTS)
         modelo_primario = modelos[0]
         proveedor_label = "Gemini"
+    elif vision_api == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not api_key:
+            raise ValueError("VISION_API=openai pero OPENAI_API_KEY no está configurada")
+        modelo_primario = os.environ.get("OPENAI_MODEL", _OPENAI_DEFAULT).strip() or _OPENAI_DEFAULT
+        modelos = [modelo_primario]
+        proveedor_label = "OpenAI"
     else:
-        raise ValueError(f"VISION_API inválido: '{vision_api}'. Usa 'claude' o 'gemini'.")
+        raise ValueError(
+            f"VISION_API inválido: '{vision_api}'. Usa 'claude', 'gemini' u 'openai'."
+        )
 
     return {
         "vision_api": vision_api,
