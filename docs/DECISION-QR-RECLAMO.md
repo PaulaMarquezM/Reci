@@ -24,7 +24,7 @@ después del hecho.
 ## Arquitectura
 
 ```text
-ESP32-CAM toma 3 fotos -> vota mayoría local -> POST /api/events/recycle (una vez)
+ESP32-CAM toma 3 fotos -> aplica política conservadora -> POST /api/events/recycle (una vez)
                                                  -> sin user_id: genera claim_code
                                                     (10 min de validez)
                         <- { event: { claim_code } }

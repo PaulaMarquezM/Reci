@@ -6,8 +6,8 @@ import type { MaterialType } from '@/lib/supabase/types'
 // POST /api/events/recycle
 // Registra UN reciclaje ya decidido. La ESP32-CAM llama a
 // /api/vision/classify con record_event=false por cada una de las 3 fotos
-// de la ráfaga (para no crear tres filas por un solo depósito), vota la
-// mayoría localmente, y llama aquí una sola vez con el resultado final.
+// de la ráfaga (para no crear tres filas por un solo depósito), aplica la
+// política conservadora por fuente y llama aquí una sola vez con el resultado final.
 // Si no hay user_id, la respuesta trae claim_code para el QR de puntos —
 // ver docs/DECISION-QR-RECLAMO.md.
 // Body: { call_id?, user_id?, material, confidence, robot_point_id? }

@@ -202,8 +202,9 @@ Mismo `Authorization: Bearer <ROBOT_API_KEY>`.
 ```
 POST /api/vision/classify        → clasificar UNA foto (ver ia/vision-service). La
                                     ESP32-CAM la llama 3 veces por depósito con
-                                    "record_event": "false" y vota la mayoría local
-                                    (ver firmware/esp32-cam/ReciEsp32Cam.ino).
+                                    "record_event": "false" y aplica la política
+                                    conservadora por fuente (ver
+                                    firmware/esp32-cam/ReciEsp32Cam/ReciEsp32Cam.ino).
 POST /api/compartments/update    → {"id": "vidrio"|"plastico", "fill_percent": 0-100}
 POST /api/events/recycle         → registrar UNA VEZ el resultado ya votado.
                                     Envía call_id cuando el reciclaje corresponde

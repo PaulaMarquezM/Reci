@@ -9,13 +9,13 @@ El proveedor y el modelo local conservan votos independientes; no se fusionan
 dentro de una misma foto.
 
 La ESP32-CAM mantiene tres capturas por depósito: esto produce seis
-predicciones visibles, tres del modelo propio y tres del proveedor, sobre
-exactamente las mismas imágenes. Para decidir, se usa la mayoría interna de
-OpenAI+sistema experto; el modelo local solo actúa como respaldo cuando
-OpenAI no logra mayoría. El empate global de las seis señales no se resuelve
-sumando pesos: primero se revisa la mayoría de OpenAI y, si no existe, la
-mayoría local. Si ninguna fuente tiene mayoría estricta, el resultado es
-`desconocido`.
+diagnósticos visibles, tres del modelo propio y tres del proveedor, sobre
+exactamente las mismas imágenes. La decisión es conservadora: una mayoría
+2/3 de OpenAI+sistema experto autoriza; si el proveedor aporta exactamente un
+voto válido, MobileNetV3-Large solo lo respalda con una mayoría 2/3 de la
+misma clase. Tres abstenciones del proveedor, contradicción entre fuentes,
+empate, error o respuesta incompleta devuelven `desconocido`. El modelo local
+binario nunca abre una compuerta por sí solo.
 
 No persiste imágenes ni atributos: cada petición es independiente. Ver
 [`docs/DECISION-SERVICIO-VISION.md`](../../docs/DECISION-SERVICIO-VISION.md)
@@ -49,13 +49,13 @@ Claude y Gemini se conservan como alternativas de diagnóstico; la decisión de
 mantener OpenAI debe validarse con las fotos reales de la ESP32-CAM mediante
 la plantilla de pruebas antes del despliegue.
 
-El modelo local solo conoce `plastico` y `vidrio`. Por eso esta votación se
-prueba únicamente con residuos de esas dos clases. `desconocido` del
-proveedor es una abstención: queda registrado como diagnóstico y no suma a
-ningún material. Tras las tres fotos, el firmware acepta la mayoría de OpenAI
-si existe; si OpenAI no logra mayoría, consulta la mayoría local. Si ninguna
-señal tiene mayoría estricta, devuelve `desconocido`. Si el runtime o el
-archivo TFLite no están disponibles, conserva el flujo del proveedor.
+El modelo local solo conoce `plastico` y `vidrio`; por eso no puede autorizar
+por sí solo objetos ajenos a esas clases. `desconocido` del proveedor queda
+registrado como abstención y no suma a ningún material. Tras las tres fotos,
+el firmware acepta la mayoría del proveedor o el respaldo local coincidente
+con su único voto válido; en cualquier otro caso devuelve `desconocido`. Si
+el runtime o el archivo TFLite no están disponibles, el diagnóstico queda
+incompleto y el firmware rechaza la clasificación.
 
 ## Desarrollo local
 
@@ -164,8 +164,10 @@ capturas nuevas realizadas con mejor iluminación alcanzaron 232/300 (77,33 %).
 
 En pruebas físicas con mejor iluminación, el sistema combinado OpenAI + modelo
 local alcanzó aproximadamente 85 % de acierto en una batería de 32 pruebas.
-Esta métrica corresponde al resultado final del sistema de seis votos y no debe
-confundirse con la evaluación aislada del modelo local.
+Esta métrica corresponde a la política de decisión vigente en el momento de la
+prueba; debe volver a medirse con la política conservadora antes de presentarla
+como resultado final y no debe confundirse con la evaluación aislada del modelo
+local.
 
 `tests/fotos_dificiles/` trae casos reales que ya fallaron en `dev/RECI` —
 por ejemplo `gatorade_vidrio_473ml.jpeg` (TM 99.8% "plastico" y Claude Sonnet

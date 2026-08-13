@@ -223,7 +223,7 @@ async def classify(image: Annotated[UploadFile, File(...)]) -> dict[str, Any]:
     return {
         # Se mantiene este contrato para clientes que hacen una sola llamada.
         # La ESP32-CAM no lo usa como decisión final: reúne vision_votes de
-        # tres fotos y ejecuta la mayoría de seis votos en el firmware.
+        # tres fotos y aplica la política conservadora por fuente.
         "material": provider_material,
         "confidence": round(confianza, 4),
         "rule_applied": rule_applied,

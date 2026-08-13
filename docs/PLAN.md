@@ -226,7 +226,7 @@ Endpoints REST mínimos (Next.js Route Handlers en `web/src/app/api/`):
 - Motores/servos aún detenidos hasta integrar navegación segura.
 
 **ESP32-CAM** (C++ Arduino, AI Thinker):
-- Al recibir `C` por el Monitor Serial: toma 3 fotos con flash (`kFlashLedPin`), llama a `POST /api/vision/classify` por cada una (`record_event: false`) y vota mayoría localmente.
+- Al recibir `C` por el Monitor Serial: toma 3 fotos con flash (`kFlashLedPin`), llama a `POST /api/vision/classify` por cada una (`record_event: false`) y aplica la política conservadora por fuente; un desconocido, error o respuesta incompleta no abre compuertas.
 - Registra el resultado final una sola vez con `POST /api/events/recycle`; si la respuesta trae `claim_code`, lo reenvía al Mega como `CMD:QR:<code>`.
 - Reconocimiento facial (saludo) es un flujo aparte, contra `/api/face/recognize` — ver `ia/face-service`.
 
