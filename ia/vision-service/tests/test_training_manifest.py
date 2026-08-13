@@ -6,13 +6,81 @@ import csv
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 ENTRENAMIENTO = Path(__file__).resolve().parents[1] / "scripts" / "entrenamiento"
 sys.path.insert(0, str(ENTRENAMIENTO))
 
 from dataset import ErrorManifiesto, cargar_particiones_manifest  # noqa: E402
+import exportacion  # noqa: E402
+
+# La validación TFLite también forma parte del contrato reproducible.
+
+class _LoteTflite:
+    def numpy(self):
+        return np.zeros((2, 224, 224, 3), dtype=np.float32)
+
+    def __len__(self):
+        return 2
+
+
+class _DatasetTflite:
+    def take(self, cantidad):
+        assert cantidad == 1
+        return [(_LoteTflite(), None)]
+
+
+class _InterpreteTflite:
+    def __init__(self, model_path, num_threads):
+        pass
+
+    def allocate_tensors(self):
+        pass
+
+    def get_input_details(self):
+        return [{'dtype': np.float32, 'shape': np.array([1, 224, 224, 3]),
+                 'quantization': (0.0, 0), 'index': 0}]
+
+    def get_output_details(self):
+        return [{'dtype': np.float32, 'shape': np.array([1, 2]),
+                 'quantization': (0.0, 0), 'index': 1}]
+
+    def get_tensor_details(self):
+        return [{'dtype': np.float32}]
+
+    def _get_ops_details(self):
+        return [{'op_name': 'SOFTMAX'}]
+
+    def set_tensor(self, index, value):
+        assert value.dtype == np.float32
+
+    def invoke(self):
+        pass
+
+
+def test_validar_tflite_conserva_muestras_etiquetadas(tmp_path, monkeypatch):
+    tflite = tmp_path / 'model.tflite'
+    tflite.write_bytes(b'modelo')
+    muestras = [(tmp_path / 'plastico.jpg', 0), (tmp_path / 'vidrio.jpg', 1)]
+    recibidas = {}
+
+    def medir(tf, destino, modelo, ds, etiquetas, *, umbral):
+        recibidas['muestras'] = etiquetas
+        return {'aceptable': True}
+
+    monkeypatch.setattr(exportacion, 'medir_regresion_cuantizacion', medir)
+    tf = SimpleNamespace(lite=SimpleNamespace(Interpreter=_InterpreteTflite))
+    resultado = exportacion.validar_tflite(
+        tf, tflite, _DatasetTflite(), 'ninguna',
+        modelo=object(), muestras=muestras,
+    )
+
+    assert recibidas['muestras'] is muestras
+    assert resultado['regresion_cuantizacion']['aceptable'] is True
+    assert resultado['latencia_ms']['n'] == 2
 
 
 def _manifesto(tmp_path: Path, filas: list[dict]) -> tuple[Path, Path]:

@@ -184,12 +184,15 @@ def validar_tflite(tf, destino: Path, ds_prueba, cuantizacion_esperada: str,
     interprete.allocate_tensors()
     entrada = interprete.get_input_details()[0]
     salida = interprete.get_output_details()[0]
-    muestras = []
+    # Este lote se usa exclusivamente para medir latencia. No debe
+    # sobrescribir muestras, que contiene las rutas y etiquetas necesarias
+    # para comparar las métricas de Keras contra las del TFLite.
+    imagenes_latencia = []
     for lote, _ in ds_prueba.take(1):
-        muestras = lote.numpy()[: min(8, len(lote))]
+        imagenes_latencia = lote.numpy()[: min(8, len(lote))]
         break
     tiempos = []
-    for imagen in muestras:
+    for imagen in imagenes_latencia:
         valor = imagen[None, ...]
         if entrada["dtype"] in (np.int8, np.uint8):
             escala, cero = entrada["quantization"]
@@ -224,7 +227,7 @@ def validar_tflite(tf, destino: Path, ds_prueba, cuantizacion_esperada: str,
     elif cuantizacion_esperada == "ninguna" and any(tipo in {"int8", "uint8"} for tipo in tipos_tensores):
         raise RuntimeError(f"TFLite tiene cuantización inesperada: {info}")
 
-    if modelo is not None and muestras:
+    if modelo is not None and muestras is not None and len(muestras) > 0:
         info["regresion_cuantizacion"] = medir_regresion_cuantizacion(
             tf, destino, modelo, ds_prueba, muestras, umbral=umbral_regresion
         )
