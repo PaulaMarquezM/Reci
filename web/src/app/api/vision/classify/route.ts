@@ -9,8 +9,9 @@ import { createRecycleEvent } from '@/lib/recycle/create-event'
 // "robot_point_id", "user_id" y "record_event".
 //
 // Retorna: { material, confidence, rule_applied, claim_code? }
-// El ESP32-CAM usa "material" para reenviar el CMD:CLASSIFY al Arduino Mega,
-// y "claim_code" (si viene) para mandar CMD:QR — ver
+// El ESP32-CAM reúne los votos que vienen en "vision_votes" y aplica la
+// política conservadora antes de enviar CMD:CLASSIFY al Arduino Mega.
+// El "claim_code" (si viene) se usa para mandar CMD:QR — ver
 // docs/DECISION-QR-RECLAMO.md.
 export async function POST(request: NextRequest) {
   if (!requireRobotAuth(request)) return err('No autorizado', 401)
@@ -51,8 +52,8 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── Clasificador ────────────────────────────────────────────────────────
-// Llama a ia/vision-service: Claude/Gemini + heurísticas OpenCV + sistema
-// experto (174 reglas, portado de dev/RECI). Ver
+// Llama a ia/vision-service: proveedor + MobileNetV3-Large INT8 + heurísticas OpenCV +
+// sistema experto (193 reglas) + votos independientes. Ver
 // docs/DECISION-SERVICIO-VISION.md.
 async function classifyImage(image: File): Promise<VisionClassifyResult> {
   try {
