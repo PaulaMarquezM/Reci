@@ -1,5 +1,9 @@
 # Relevo: entrenamiento reproducible de modelos de visión
 
+> **Documento histórico.** Este relevo se ejecutó con el experimento del 9 de
+> agosto de 2026. MobileNetV3-Large quedó activo como modelo local; las
+> evidencias actuales están en `docs/resultados-vision/2026-08-09/`.
+
 ## Propósito
 
 Este documento orienta al agente que continuará el trabajo **en una computadora

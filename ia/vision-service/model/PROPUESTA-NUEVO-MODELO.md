@@ -1,5 +1,9 @@
 # Propuesta de nuevo modelo local: EfficientNet-B0 y MobileNetV3-Large
 
+> **Documento histórico.** La propuesta se ejecutó el 9 de agosto de 2026.
+> MobileNetV3-Large fue el ganador y está activo; consulta
+> `docs/resultados-vision/2026-08-09/README.md` para la evidencia final.
+
 **Estado:** propuesta de experimentación; todavía no reemplaza al modelo
 actual.  
 **Alcance:** clasificación binaria `plastico | vidrio` con imágenes QVGA de

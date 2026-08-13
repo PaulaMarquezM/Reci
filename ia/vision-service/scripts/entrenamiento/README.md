@@ -100,21 +100,19 @@ debe contar como regresión). Si no se cumple, la consola lo avisa y
 `aceptable` queda en `false`; la corrida **no** se aborta, para poder
 diagnosticar el artefacto.
 
-**Esto no es opcional.** Medido sobre los artefactos de las nueve corridas, la
-cuantización int8 conserva MobileNetV2 (98,5 % de acuerdo) pero destruye a los
-otros dos candidatos:
+**Esto no es opcional.** Los valores de acuerdo que aparecían aquí pertenecían
+a una validación preliminar y no deben reutilizarse para decidir una corrida
+nueva. Cada artefacto candidato debe pasar esta verificación con su propia
+partición de validación antes de ser desplegado.
 
-| Arquitectura | Acuerdo f32↔int8 | Caída de macro-F1 |
-| --- | ---: | ---: |
-| MobileNetV2 | 98,5 % | 0,017 |
-| MobileNetV3-Large | 47,1 % | 0,350 |
-| EfficientNet-B0 | 57,4 % | 0,232 |
-
-La causa es la activación: MobileNetV2 usa ReLU6, acotada y pensada para
-cuantizar; EfficientNet usa Swish y MobileNetV3 hard-swish, sin cota superior.
-Un candidato que gane en validación con el modelo Keras puede perder más de 20
-puntos en el artefacto que realmente se despliega. Para usar esos dos habría
-que exportarlos en `float16` o entrenar con cuantización consciente.
+El experimento completado el 9 de agosto de 2026 sí validó el artefacto INT8
+ganador `mobilenetv3large_20260809_004420_split42_seed1`: alcanzó 94,47 % de
+macro-F1 en validación y es el modelo local activo del servicio. Los resultados
+reproducibles y las nueve corridas están en
+[`docs/resultados-vision/2026-08-09`](../../../../docs/resultados-vision/2026-08-09/README.md).
+No se deben inferir métricas de cuantización de una arquitectura a otra ni de
+una corrida a otra; la decisión de despliegue siempre se toma sobre el TFLite
+que realmente se ejecutará.
 
 ## TensorBoard
 

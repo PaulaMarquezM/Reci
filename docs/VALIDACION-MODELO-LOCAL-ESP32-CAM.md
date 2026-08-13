@@ -4,6 +4,10 @@
 **Responsable:** Axel Hernández  
 **Rama:** `axel/ia-sistema-experto`
 
+> **Documento histórico.** Conserva la línea base de MobileNetV2 previa al
+> reentrenamiento comparativo. No describe el modelo activo, que ahora es
+> MobileNetV3-Large INT8.
+
 Este documento reúne la evidencia disponible del modelo local para que la
 persona que continúe el trabajo pueda evaluar, ajustar o reentrenar sin
 perder el contexto ni contaminar los conjuntos de prueba.

@@ -1,12 +1,12 @@
 # Decisión: servicio de visión aislado
 
-**Fecha:** 19 de julio de 2026
-**Estado:** Aprobada para implementación y pruebas controladas
+**Fecha original:** 19 de julio de 2026
+**Estado:** Implementada y actualizada el 12 de agosto de 2026
 
 ## Decisión
 
 La clasificación vidrio/plástico de Reci se implementa como un servicio
-privado en Python, FastAPI, el MobileNetV2/TFLite entrenado por Axel, OpenAI
+privado en Python, FastAPI, el MobileNetV3-Large/TFLite INT8 activo, OpenAI
 (vision) y el sistema experto de Reci (193 reglas, CF MYCIN, meta-reglas,
 forward + backward chaining). Claude y Gemini quedan como alternativas
 configurables. La app
@@ -19,9 +19,11 @@ con la API del robot. Mismo patrón que `face-service` (ver
 
 El plan original de Fase 3 (`docs/PLAN.md`) era entrenar un MobileNetV2
 propio y desplegarlo con TF.js/ONNX Runtime dentro de un Route Handler de
-Vercel. Ese modelo depende de un dataset propio (≥500 fotos/clase) capturado
-con la ESP32-CAM que todavía no existe — es, según el propio plan, "el
-bloqueante más grande para el Flujo A".
+Vercel. Ese planteamiento quedó superado por el experimento reproducible de
+agosto: se compararon MobileNetV2, EfficientNet-B0 y MobileNetV3-Large sobre
+capturas ESP32-CAM, y MobileNetV3-Large obtuvo el mejor macro-F1 de validación
+(94,47 % en la corrida ganadora). Ver
+[`resultados-vision/2026-08-09`](resultados-vision/2026-08-09/README.md).
 
 Existe un prototipo (`dev/RECI`, repo separado) con exactamente esta pieza ya
 construida y probada: sistema experto que luego se amplió a 193 reglas con
@@ -30,9 +32,9 @@ formales, y una integración con Claude vision cuyo prompt fue afinado contra
 capturas reales del campus hasta resolver 39/39 sin error (ver el changelog
 de `dev/RECI/README.md`, jul 2026). Reutilizar ese código en un servicio
 aislado dio clasificación real sin esperar al dataset nuevo. Después se portó
-el MobileNetV2/TFLite ya entrenado en RECI2 para compararlo con el proveedor
-sobre las mismas fotos. El dataset nuevo de la ESP32-CAM se usará primero
-para evaluar esta integración y solo después, si hace falta, para fine-tuning.
+un modelo TFLite local para compararlo con el proveedor sobre las mismas
+fotos. El modelo activo actual es MobileNetV3-Large; MobileNetV2 se conserva
+como respaldo para comparación, sin participar en la decisión de producción.
 
 Incluir el modelo o las llamadas al proveedor de visión directamente en el Route
 Handler de Vercel tampoco es apropiado: son llamadas de red con reintentos
@@ -44,7 +46,7 @@ separado del resto de la web.
 
 ```text
 ESP32-CAM -> 3 fotos -> POST /api/vision/classify -> Vision Service /v1/classify
-                            cada foto -> MobileNetV2 local (plástico/vidrio)
+                            cada foto -> MobileNetV3-Large local (plástico/vidrio)
                                       -> OpenAI (9 atributos visuales)
                                       -> heurísticas OpenCV
                                       -> Sistema Experto (193 reglas, CF MYCIN)
@@ -72,7 +74,7 @@ contenedor.
 
 Ver la tabla completa en [`ia/vision-service/README.md`](../ia/vision-service/README.md#qué-se-portó-de-devreci-y-qué-no).
 Resumen: `expert_system/` se portó y amplió; la llamada al proveedor de visión
-se reescribió en `vision/classifier.py`; el MobileNetV2 se portó como
+se reescribió en `vision/classifier.py`; el modelo local se integró como
 clasificador independiente en `vision/local_model.py`; y los votos por foto
 se construyen en `vision/voting.py`. No se portó `camera.py` porque la captura ahora vive en el
 firmware, ni el log a archivo porque fue reemplazado por `logging` a stdout.

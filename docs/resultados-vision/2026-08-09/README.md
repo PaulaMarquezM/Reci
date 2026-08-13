@@ -2,7 +2,13 @@
 
 Fecha de ejecución: 9 de agosto de 2026. Estado: **completado**.
 
-Este directorio reúne la evidencia ligera para revisión del experimento de clasificación binaria `plastico | vidrio`. No incluye el dataset, pesos, modelos `.keras`/`.tflite`, checkpoints ni eventos TensorBoard; esos archivos son pesados o no corresponden a una revisión documental. El modelo desplegado del sistema no se modificó.
+Este directorio reúne la evidencia ligera para revisión del experimento de clasificación binaria `plastico | vidrio`. No incluye el dataset, pesos, modelos `.keras`/`.tflite`, checkpoints ni eventos TensorBoard; esos archivos son pesados o no corresponden a una revisión documental.
+
+> **Actualización de despliegue (12 de agosto de 2026):** a partir de este
+> experimento se activó el ganador `mobilenetv3large_20260809_004420_split42_seed1`
+> como modelo local INT8 del servicio. Esta carpeta conserva los resultados del
+> experimento; el estado técnico activo está en
+> [`ia/vision-service/model/README.md`](../../../ia/vision-service/model/README.md).
 
 ## Diseño experimental
 

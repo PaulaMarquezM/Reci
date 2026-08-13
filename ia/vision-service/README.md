@@ -2,7 +2,7 @@
 
 Servicio FastAPI privado que clasifica una foto de residuo como `vidrio`,
 `plastico` o `desconocido`. Cada foto se analiza de forma independiente con
-el MobileNetV2/TFLite entrenado por Axel y con Claude, Gemini u OpenAI. Los
+el MobileNetV3-Large/TFLite activo y con Claude, Gemini u OpenAI. Los
 atributos del proveedor se refinan con OpenCV y pasan por el sistema experto
 de Reci (193 reglas, CF MYCIN, meta-reglas, forward + backward chaining).
 El proveedor y el modelo local conservan votos independientes; no se fusionan
@@ -64,7 +64,9 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export VISION_SERVICE_API_KEY='cambia-esto'
-export ANTHROPIC_API_KEY='sk-ant-...'
+export VISION_API=openai
+export OPENAI_API_KEY='tu-clave-local'
+export OPENAI_MODEL='gpt-5.6-luna'
 uvicorn main:app --reload --port 8001
 ```
 
@@ -176,10 +178,12 @@ tal cual en este servicio) siguen fallando aquí con ese objeto.
 
 ```bash
 python3 tests/test_cases.py
+python3 -m pytest -q
 ```
 
-118 casos del sistema experto. Corre esto después de tocar cualquier regla en
-`expert_system/` para confirmar que no rompiste algo que ya funcionaba.
+`test_cases.py` valida los 118 casos formales del sistema experto; `pytest`
+verifica además el servicio, la inferencia local y la votación. Corre ambas
+pruebas después de tocar reglas, el modelo local o la política de decisión.
 
 ## Contenedor
 
@@ -187,8 +191,9 @@ python3 tests/test_cases.py
 docker build -t reci-vision-service .
 docker run --rm -p 8001:8000 \
   -e VISION_SERVICE_API_KEY='cambia-esto' \
-  -e ANTHROPIC_API_KEY='sk-ant-...' \
-  -e CLAUDE_MODEL='claude-sonnet-4-6' \
+  -e VISION_API='openai' \
+  -e OPENAI_API_KEY='tu-clave-local' \
+  -e OPENAI_MODEL='gpt-5.6-luna' \
   reci-vision-service
 ```
 
@@ -202,7 +207,7 @@ proxy que limite su acceso al backend de Reci — igual que `face-service`.
 | `expert_system/` completo (193 reglas, CF MYCIN, meta-reglas) | ✅ Portado y ampliado con las correcciones de RECI2 — es Python puro, sin dependencia de hardware ni archivos |
 | `vision/visual_heuristics.py` | ✅ Portado y ampliado; el proveedor se refina de forma independiente antes de emitir su voto |
 | `vision/attribute_extractor.py` (llamada a Claude/Gemini + prompt) | ⚠️ Reescrito en `vision/classifier.py` — soporta Claude, Gemini y OpenAI, con menos reintentos |
-| MobileNetV2 local/TFLite | ✅ Portado desde `run_20260721_2129`; `vision/local_model.py` lo carga una vez y `vision/voting.py` emite su voto independiente |
+| MobileNetV3-Large local/TFLite INT8 | ✅ Activo tras el experimento de agosto; `vision/local_model.py` lo carga una vez y `vision/voting.py` emite su voto independiente. MobileNetV2 se conserva como respaldo de comparación |
 | `vision/camera.py` (captura + triple voto + persistencia de correcciones) | ❌ No aplica — la captura la hace el firmware de la ESP32-CAM, no este servicio |
 | `vision/clasificacion_log.py` (log a archivo local) | ❌ No portado — reemplazado por `logging` a stdout (los contenedores no garantizan disco persistente entre despliegues) |
 | `tests/test_cases.py` + `tests/casos/` (118 pruebas del sistema experto) | ✅ Alineado con RECI2 — 118/118 |

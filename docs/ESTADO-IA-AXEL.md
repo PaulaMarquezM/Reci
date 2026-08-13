@@ -2,6 +2,11 @@
 
 **Fecha de actualización:** 23 de julio de 2026
 
+> **Documento histórico.** Describe el estado anterior al experimento de tres
+> modelos de agosto de 2026. El modelo local activo ahora es MobileNetV3-Large;
+> consulta `ia/vision-service/model/README.md` y
+> `docs/resultados-vision/2026-08-09/README.md` para el estado actual.
+
 **Responsable:** Axel Hernández — Lead IA + Sistema Experto
 **Rama de trabajo:** `axel/ia-sistema-experto`
 

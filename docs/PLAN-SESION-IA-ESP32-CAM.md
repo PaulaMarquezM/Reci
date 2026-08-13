@@ -2,6 +2,10 @@
 
 **Responsable principal:** Axel Hernández
 
+> **Documento histórico.** Este plan se completó antes del experimento de
+> agosto de 2026. Mantiene el contexto de captura, pero no es el plan operativo
+> actual ni define el modelo desplegado.
+
 **Apoyo esperado:** Paula Márquez para validación e integración web
 **Meta de la sesión:** validar el flujo actual con objetos reales e iniciar un
 dataset limpio de ESP32-CAM para evaluar/reentrenar el modelo.
