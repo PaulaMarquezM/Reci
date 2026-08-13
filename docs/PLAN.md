@@ -1,4 +1,4 @@
-# Reci — Plan maestro
+﻿# Reci — Plan maestro
 
 > Documento vivo. Se actualiza cada vez que cerramos una fase o cambiamos una decisión.
 > Última actualización: 2026-07-19 · Fase 6 en curso, Fase 3 desbloqueada.
@@ -31,7 +31,7 @@ Si buscas el alcance, los criterios de aceptación o los riesgos, eso vive en [`
 - ✅ Las 5 pantallas de la app (home/mapa, llamar, historial, cupones, ajustes) conectadas a las API routes.
 - ✅ Rediseño visual: tipografía Poppins, paleta cream/ink, mascota de Reci (`web/src/components/reci-mascot.tsx`).
 - ✅ PWA instalable: `manifest.ts` + iconos generados dinámicamente con `next/og` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png` con safe-zone para Android adaptive icons).
-- ✅ `ia/vision-service` implementado (FastAPI + Claude/Gemini + heurísticas OpenCV + sistema experto de 174 reglas portado de `dev/RECI`) y conectado a `/api/vision/classify` — reemplaza el stub. Ver [`DECISION-SERVICIO-VISION.md`](DECISION-SERVICIO-VISION.md). Probado localmente; falta desplegarlo y probarlo con la ESP32-CAM física.
+- ✅ `ia/vision-service` implementado (FastAPI + Claude/Gemini + heurísticas OpenCV + sistema experto de 193 reglas portado de `dev/RECI`) y conectado a `/api/vision/classify` — reemplaza el stub. Ver [`DECISION-SERVICIO-VISION.md`](DECISION-SERVICIO-VISION.md). Probado localmente; falta desplegarlo y probarlo con la ESP32-CAM física.
 
 ### En curso
 
@@ -113,7 +113,7 @@ Las 8 fases del acta, traducidas a entregables concretos y quién los hace. Las 
 
 **Objetivo:** clasificación vidrio/plástico ≥ 85% en condiciones del campus, corriendo en el cloud.
 
-- [x] **`ia/vision-service` implementado** — FastAPI + Claude/Gemini + heurísticas OpenCV + sistema experto (174 reglas, portado de `dev/RECI`), probado localmente (auth, validación, manejo de errores, mapeo a `MaterialType`). Ver [`DECISION-SERVICIO-VISION.md`](DECISION-SERVICIO-VISION.md).
+- [x] **`ia/vision-service` implementado** — FastAPI + Claude/Gemini + heurísticas OpenCV + sistema experto (193 reglas, portado de `dev/RECI`), probado localmente (auth, validación, manejo de errores, mapeo a `MaterialType`). Ver [`DECISION-SERVICIO-VISION.md`](DECISION-SERVICIO-VISION.md).
 - [x] **`web/src/app/api/vision/classify/route.ts`** — stub reemplazado, llama a `ia/vision-service` vía `web/src/lib/vision/service.ts` (mismo patrón que `face/service.ts`). Falla segura a `desconocido` si el servicio no responde.
 - [ ] **Axel/Andrea** · desplegar `ia/vision-service` en un host accesible desde Vercel y configurar `VISION_SERVICE_URL` / `VISION_SERVICE_API_KEY` en el panel de Vercel
 - [ ] **Axel + Paula** · prueba end-to-end: ESP32-CAM → `POST /api/vision/classify` → `ia/vision-service` → respuesta JSON, con fotos reales de la ESP32-CAM
@@ -233,7 +233,7 @@ Endpoints REST mínimos (Next.js Route Handlers en `web/src/app/api/`):
 
 - Servicio aislado `ia/vision-service` (FastAPI), llamado desde `web/src/app/api/vision/classify/route.ts` — mismo patrón que `ia/face-service`. Ver [`DECISION-SERVICIO-VISION.md`](DECISION-SERVICIO-VISION.md).
 - Clasificación con Claude/Gemini vision (9 atributos) + heurísticas OpenCV, portado y probado en `dev/RECI` (110/110 pruebas del sistema experto, 39/39 capturas reales).
-- Sistema experto de 174 reglas (CF MYCIN, meta-reglas, forward + backward chaining) sobre los atributos extraídos — no reglas IF-THEN simples sobre un solo umbral.
+- sistema experto de 193 reglas (CF MYCIN, meta-reglas, forward + backward chaining) sobre los atributos extraídos — no reglas IF-THEN simples sobre un solo umbral.
 - Pendiente (mejora, no bloqueante): MobileNet v2 propio entrenado con dataset de la ESP32-CAM, corriendo dentro de `vision-service` como primer voto (reduce costo/latencia de las llamadas a Claude/Gemini).
 - Sin procesamiento local en el robot — toda la inferencia ocurre en el cloud (la ESP32-CAM solo captura y envía).
 

@@ -9,6 +9,17 @@ Este directorio reúne la evidencia ligera para revisión del experimento de cla
 > como modelo local INT8 del servicio. Esta carpeta conserva los resultados del
 > experimento; el estado técnico activo está en
 > [`ia/vision-service/model/README.md`](../../../ia/vision-service/model/README.md).
+>
+> ⚠️ **Ese despliegue se adelantó a los dos pasos que este documento exige** (ver
+> "Ganador provisional" más abajo): la prueba reservada sigue sin consultarse
+> (`prueba_reservada_consultada: false`) y la comprobación de regresión por
+> cuantización, añadida después de este experimento, **no la supera**. El
+> artefacto activo cambia entre el 14 % y el 53 % de sus predicciones al pasar a
+> int8, según el conjunto con que se mida. Todas las cifras de este documento
+> son del modelo Keras en float32 y no describen el artefacto desplegado. El
+> detalle está en
+> [`analisis-modelos-entrenados.ipynb`](../../../ia/vision-service/model/analisis-modelos-entrenados.ipynb) §6
+> y en el estado de verificación del README del modelo.
 
 ## Diseño experimental
 

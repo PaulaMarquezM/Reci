@@ -1,5 +1,18 @@
 # Validación y relevo — MobileNetV2 local con ESP32-CAM
 
+> ⚠️ **Documento histórico, superado por el experimento del 9 de agosto de
+> 2026.** Describe el MobileNetV2 de `run_20260721_2129`, que ya no es el modelo
+> activo y se conserva en `ia/vision-service/model/backups/`. Sus cifras de
+> ESP32-CAM (201 capturas, 70.15 %) fueron reemplazadas después por la
+> evaluación de 1.000 capturas balanceadas (71.60 %), y el §5 "Orden recomendado
+> para continuar" se ejecutó: el resultado está en
+> [`docs/resultados-vision/2026-08-09`](resultados-vision/2026-08-09/).
+>
+> Sigue siendo útil como registro del **protocolo** de validación y del
+> diagnóstico de cambio de dominio que motivó el reentrenamiento. Para el estado
+> vigente, ver
+> [`ia/vision-service/model/README.md`](../ia/vision-service/model/README.md).
+
 **Fecha de actualización:** 23 de julio de 2026  
 **Responsable:** Axel Hernández  
 **Rama:** `axel/ia-sistema-experto`
