@@ -2,7 +2,7 @@
 
 Servicio FastAPI privado que clasifica una foto de residuo como `vidrio`,
 `plastico` o `desconocido`. Cada foto se analiza de forma independiente con
-el MobileNetV3-Large/TFLite activo y con Claude, Gemini u OpenAI. Los
+el MobileNetV2/TFLite float32 activo y con Claude, Gemini u OpenAI. Los
 atributos del proveedor se refinan con OpenCV y pasan por el sistema experto
 de Reci (193 reglas, CF MYCIN, meta-reglas, forward + backward chaining).
 El proveedor y el modelo local conservan votos independientes; no se fusionan
@@ -10,12 +10,13 @@ dentro de una misma foto.
 
 La ESP32-CAM mantiene tres capturas por depósito: esto produce seis
 diagnósticos visibles, tres del modelo propio y tres del proveedor, sobre
-exactamente las mismas imágenes. La decisión es conservadora: una mayoría
-2/3 de OpenAI+sistema experto autoriza; si el proveedor aporta exactamente un
-voto válido, MobileNetV3-Large solo lo respalda con una mayoría 2/3 de la
-misma clase. Tres abstenciones del proveedor, contradicción entre fuentes,
-empate, error o respuesta incompleta devuelven `desconocido`. El modelo local
-binario nunca abre una compuerta por sí solo.
+exactamente las mismas imágenes. Los seis votos participan en una sola
+elección: `desconocido` se trata como abstención y gana la clase con más votos
+válidos. Si OpenAI+sistema experto se abstiene en las tres fotos, el modelo
+local solo decide con unanimidad 3/3; una división 2–1 devuelve
+`desconocido`. Si plástico y vidrio empatan, desempata la preferencia de los
+votos válidos de OpenAI+sistema experto. Una respuesta incompleta o una
+confusión que el proveedor no pueda resolver devuelve `desconocido`.
 
 No persiste imágenes ni atributos: cada petición es independiente. Ver
 [`docs/DECISION-SERVICIO-VISION.md`](../../docs/DECISION-SERVICIO-VISION.md)
@@ -49,13 +50,14 @@ Claude y Gemini se conservan como alternativas de diagnóstico; la decisión de
 mantener OpenAI debe validarse con las fotos reales de la ESP32-CAM mediante
 la plantilla de pruebas antes del despliegue.
 
-El modelo local solo conoce `plastico` y `vidrio`; por eso no puede autorizar
-por sí solo objetos ajenos a esas clases. `desconocido` del proveedor queda
-registrado como abstención y no suma a ningún material. Tras las tres fotos,
-el firmware acepta la mayoría del proveedor o el respaldo local coincidente
-con su único voto válido; en cualquier otro caso devuelve `desconocido`. Si
-el runtime o el archivo TFLite no están disponibles, el diagnóstico queda
-incompleto y el firmware rechaza la clasificación.
+El modelo local solo conoce `plastico` y `vidrio`; sus votos se combinan con
+los del proveedor para que ambas fuentes aporten evidencia. `desconocido` del
+proveedor queda registrado como abstención y no suma a ningún material. Tras
+las tres fotos, el firmware cuenta los seis diagnósticos y usa al proveedor
+únicamente para desempatar; con tres abstenciones del proveedor, el modelo
+necesita unanimidad local. Si el runtime o el archivo TFLite no están
+disponibles, el diagnóstico queda incompleto y el firmware rechaza la
+clasificación.
 
 ## Desarrollo local
 
@@ -209,7 +211,7 @@ proxy que limite su acceso al backend de Reci — igual que `face-service`.
 | `expert_system/` completo (193 reglas, CF MYCIN, meta-reglas) | ✅ Portado y ampliado con las correcciones de RECI2 — es Python puro, sin dependencia de hardware ni archivos |
 | `vision/visual_heuristics.py` | ✅ Portado y ampliado; el proveedor se refina de forma independiente antes de emitir su voto |
 | `vision/attribute_extractor.py` (llamada a Claude/Gemini + prompt) | ⚠️ Reescrito en `vision/classifier.py` — soporta Claude, Gemini y OpenAI, con menos reintentos |
-| MobileNetV3-Large local/TFLite INT8 | ✅ Activo tras el experimento de agosto; `vision/local_model.py` lo carga una vez y `vision/voting.py` emite su voto independiente. MobileNetV2 se conserva como respaldo de comparación |
+| MobileNetV2 local/TFLite float32 | ✅ Activo tras superar al V3 INT8 en la comparación operativa de 1.000 capturas; `vision/local_model.py` lo carga una vez y `vision/voting.py` emite su voto independiente. V3 INT8 se conserva como respaldo sin voto |
 | `vision/camera.py` (captura + triple voto + persistencia de correcciones) | ❌ No aplica — la captura la hace el firmware de la ESP32-CAM, no este servicio |
 | `vision/clasificacion_log.py` (log a archivo local) | ❌ No portado — reemplazado por `logging` a stdout (los contenedores no garantizan disco persistente entre despliegues) |
 | `tests/test_cases.py` + `tests/casos/` (118 pruebas del sistema experto) | ✅ Alineado con RECI2 — 118/118 |

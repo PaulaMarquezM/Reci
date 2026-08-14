@@ -4,7 +4,13 @@
 **Sesión prevista:** 13 de agosto de 2026
 **Fuente de visión auditada:** `integration/andrea-axel-vision` en `7c375c4`
 **Rama principal auditada:** `origin/main` en `96aaa96`
-**Estado:** plan de ejecución; todavía no se ha mezclado código con `main`
+**Estado:** integración en `integration/vision-main-20260813`; pendiente de
+pruebas finales y revisión, sin fusión realizada desde esta rama hacia `main`
+
+**Alcance acordado para esta fase:** el equipo de visión no modifica `web/`.
+Las referencias web de este documento se conservan únicamente como contexto
+histórico del contrato ya integrado; no forman parte de los cambios, pruebas ni
+commits preparados el 13 de agosto después de seleccionar el modelo local.
 
 ## 1. Objetivo exacto
 
@@ -14,7 +20,8 @@ residuos que ya fue probado:
 - cámara OV3660 en una placa compatible con AI Thinker ESP32-CAM;
 - tres capturas QVGA por residuo;
 - OpenAI + heurísticas OpenCV + sistema experto de 193 reglas;
-- MobileNetV3-Large INT8 como modelo local activo;
+- MobileNetV2 TFLite float32 como modelo local activo; MobileNetV3-Large INT8
+  se conserva como respaldo auditado sin voto;
 - dos diagnósticos por foto, hasta seis diagnósticos por depósito;
 - una única decisión final: `plastico`, `vidrio` o `desconocido`;
 - apertura de una sola compuerta únicamente después de una decisión válida.
@@ -51,8 +58,8 @@ clasificación del firmware principal.
 | Componente | `origin/main` (`96aaa96`) | Rama de visión (`7c375c4`) | Acción |
 | --- | --- | --- | --- |
 | Web y API del robot | Desplegada; HTTPS y contratos de llamadas actuales | Basada en una versión anterior | Conservar `main`; añadir solo el contrato `vision_votes` |
-| Servicio experto | Proveedor + sistema experto, sin modelo local activo | OpenAI + sistema experto + MobileNetV3 + votos | Trasladar selectivamente desde visión |
-| Modelo local | No está en `main` | MobileNetV3-Large INT8 activo | Incorporar modelo, etiquetas y manifiestos |
+| Servicio experto | Proveedor + sistema experto, sin modelo local activo | OpenAI + sistema experto + modelos locales candidatos | Trasladar selectivamente y validar el artefacto desplegado |
+| Modelo local | No está en `main` | V2 float32 y V3 INT8 disponibles | Activar V2 por la comparación operativa; conservar V3 como respaldo |
 | ESP32-CAM | HTTPS, NTP, llamadas y eventos; vota un resultado por foto | OV3660/QVGA y votación separada por fuente | Integrar funciones, no reemplazar archivo |
 | Mega para demo real | `ReciRutaDemo.ino`, rutas, motores, servos y eventos | No contiene los últimos cambios | Conservar exactamente el de `main` |
 | Mega modular | `ReciMega.ino`, navegación por sensores de línea | Tiene cambios antiguos de PIR | No usar como objetivo de la demo actual |
@@ -105,45 +112,63 @@ comandos llegan sin corrupción. No comprueba:
 - las rutas `BASE/P1/P2` y los eventos de llegada;
 - los servos o bloqueos de seguridad del Mega.
 
-### 4.4 Riesgo de seguridad con objetos desconocidos
+### 4.4 Política vigente: votación conjunta de las dos fuentes
 
-MobileNetV3-Large es binario. Incluso ante una lata, cartón, mano u objeto
-ajeno siempre escogerá `plastico` o `vidrio`. Con la política actual, si OpenAI
-produce tres abstenciones, una mayoría del modelo local puede abrir una
-compuerta. Por tanto, la implementación actual no garantiza el requisito
-“desconocido no abre nada”.
+MobileNetV2 y OpenAI+sistema experto analizan las mismas tres fotos y
+aportan seis votos individuales. La política restaurada combina ambas fuentes:
 
-Antes de conectar servos se debe aplicar esta política conservadora:
-
-1. Si OpenAI + sistema experto obtiene 2 de 3 votos iguales, se acepta esa clase.
-2. Si OpenAI no obtiene mayoría pero aporta exactamente un voto válido, el
-   modelo local solo puede respaldarlo si obtiene al menos 2 votos de la misma
-   clase.
-3. Si OpenAI entrega tres `desconocido`, se rechaza aunque el modelo binario
-   tenga mayoría.
-4. Si OpenAI entrega votos válidos contradictorios o el modelo local contradice
-   el único voto válido, se rechaza.
-5. Toda captura fallida, respuesta incompleta, empate o error de red se trata
-   como abstención y nunca como permiso.
+1. `desconocido` es una abstención y no suma a plástico ni a vidrio.
+2. Se cuentan juntos los votos válidos de las dos fuentes.
+3. Si OpenAI+sistema experto aporta tres abstenciones, el modelo local decide
+   únicamente si sus tres votos son idénticos; una mayoría local 2–1 devuelve
+   `desconocido`.
+4. En los demás casos gana la clase con mayor cantidad total de votos.
+5. Si el resultado total empata, se usa la preferencia de los votos válidos de
+   OpenAI+sistema experto como desempate.
+6. Si faltó una respuesta o el empate no puede resolverse con el proveedor, el
+   resultado es `desconocido` y no se abre ninguna compuerta.
 
 Ejemplos obligatorios:
 
-| OpenAI | Modelo local | Resultado seguro |
+| OpenAI | Modelo local | Resultado |
 | --- | --- | --- |
-| P, P, D | cualquier resultado | plástico |
-| V, V, D | cualquier resultado | vidrio |
-| P, D, D | P, P, V | plástico por respaldo coincidente |
-| V, D, D | V, V, P | vidrio por respaldo coincidente |
-| D, D, D | V, V, P | desconocido |
-| P, D, D | V, V, P | desconocido |
-| P, V, D | P, P, P | desconocido |
+| P, P, D | P, V, P | plástico, 4–1 |
+| V, V, D | V, P, V | vidrio, 4–1 |
+| P, D, D | P, P, V | plástico, 3–1 |
+| V, D, D | V, V, P | vidrio, 3–1 |
+| D, D, D | V, V, V | vidrio por unanimidad local, 3–0 |
+| D, D, D | V, V, P | desconocido; modelo local no unánime |
+| P, D, D | V, V, V | vidrio, 3–1 |
+| P, P, V | V, V, P | plástico por desempate del proveedor, 3–3 |
 
-`P` significa plástico, `V` vidrio y `D` desconocido/abstención. Esta regla
-reduce algunos aciertos cuando OpenAI se abstiene en las tres fotos, pero es la
-única opción conservadora disponible mientras el modelo local no tenga una
-clase de rechazo calibrada.
+`P` significa plástico, `V` vidrio y `D` desconocido/abstención. Como el modelo
+local es binario, la batería física debe incluir objetos fuera de distribución
+para observar el riesgo de que sus votos dominen cuando el proveedor se
+abstiene; ese riesgo queda documentado y no se oculta.
 
-### 4.5 Desarrollo local y producción no tienen la misma red
+### 4.5 Selección del modelo local activo
+
+El 13 de agosto se compararon los dos artefactos TFLite disponibles con el
+mismo pipeline de producción sobre 1.000 capturas OV3660/QVGA balanceadas:
+
+| Artefacto | Tipo | Exactitud | Macro-F1 | Mayoría de tripletas | p50 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| MobileNetV2 | float32 | 71,60 % | 71,25 % | 75,15 % | 14,53 ms |
+| MobileNetV3-Large | INT8 | 57,10 % | 57,09 % | 59,09 % | 5,12 ms |
+
+MobileNetV2 queda activo porque la mejora de calidad supera ampliamente la
+diferencia de latencia dentro del servicio Python. El conjunto puede solaparse
+con datos de desarrollo, por lo que sirve para escoger entre artefactos pero no
+se presenta como prueba reservada. MobileNetV3-Large INT8 se conserva completo
+en `model/backups/` y no participa en `vision_votes`.
+
+El modelo local sigue siendo binario y no produce por sí mismo la categoría
+`desconocido`. Esa salida pertenece al proveedor+sistema experto y a la
+política final. Cuando el proveedor entrega tres abstenciones, se conserva la
+decisión acordada por el equipo: el modelo local solo autoriza con unanimidad
+3/3; una división 2–1 rechaza.
+
+### 4.6 Desarrollo local y producción no tienen la misma red
 
 Para la prueba local, la ESP32 llama a Next.js en la IP de la Mac y Next.js
 llama a `vision-service` en la misma Mac. Una aplicación desplegada en Vercel
@@ -313,7 +338,7 @@ Registrar por ronda:
 | Objeto real | |
 | Iluminación | |
 | Tres votos OpenAI | |
-| Tres votos MobileNetV3 | |
+| Tres votos MobileNetV2 | |
 | Regla final | |
 | Comando recibido en Uno | |
 | Tiempo total aproximado | |
@@ -373,7 +398,7 @@ este plan a la nueva versión. No se asume que `main` permanece igual.
 - `ia/vision-service/scripts/entrenamiento/`, porque una prueba automatizada
   valida su manifiesto;
 - modelo activo, etiquetas, README, manifiesto y validación TFLite;
-- respaldo MobileNetV2 si se conservará la comparación en sombra.
+- respaldo MobileNetV3-Large INT8 para auditoría o comparación en sombra.
 
 Comando base, desde la nueva rama:
 
@@ -397,7 +422,8 @@ git restore --source=origin/integration/andrea-axel-vision -- \
   ia/vision-service/model/README.md \
   ia/vision-service/model/entrenamiento_manifest.json \
   ia/vision-service/model/tflite_validacion.json \
-  ia/vision-service/model/backups/mobilenetv2_run_20260721_2129
+  ia/vision-service/model/backups/mobilenetv2_run_20260721_2129 \
+  ia/vision-service/model/backups/mobilenetv3large_20260809_004420_split42_seed1
 ```
 
 No trasladar al runtime de `main`:
@@ -422,24 +448,24 @@ Resultados de referencia antes de integrar:
 
 - `pytest`: 20 pruebas aprobadas;
 - sistema experto: 118/118;
-- SHA-256 de MobileNetV3-Large activo:
-  `b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503`.
+- SHA-256 de MobileNetV2 activo:
+  `da71c12244076c1fe8f206a444f0c7fad9af467f813976acd40e027ae62f56b1`.
 
 La advertencia local de LibreSSL y la deprecación de
 `tensorflow.lite.Interpreter` no son fallos de prueba. Sí es fallo que no cargue
 el modelo, que cambie el hash o que falte una clase.
 
-### 8.3 Aplicar la regla conservadora
+### 8.3 Aplicar la votación conjunta
 
 Actualizar `vision/voting.py`, sus pruebas y la función equivalente del
 firmware para cumplir la tabla de la sección 4.4. La prueba automatizada debe
 incluir como mínimo:
 
-- mayoría OpenAI;
-- respaldo local coincidente con un voto OpenAI;
-- tres abstenciones OpenAI;
-- conflicto entre fuentes;
-- empate de OpenAI;
+- mayoría total de los seis votos;
+- abstenciones del proveedor;
+- mayoría local contraria a un voto aislado del proveedor;
+- empate 3–3 resuelto por el proveedor;
+- confusión que no pueda desempatarse;
 - captura o fuente ausente.
 
 No se usan umbrales de confianza inventados. Si el equipo desea un umbral del
@@ -468,7 +494,7 @@ Después revisar manualmente que:
 - solo se aceptan las fuentes `openai_sistema_experto` y `modelo_local`;
 - `vision_local_shadow_result` no entra en `vision_votes`;
 - la caída del servicio devuelve `desconocido`;
-- los comentarios nombran MobileNetV3-Large, no MobileNetV2;
+- los comentarios nombran MobileNetV2 como activo y V3 únicamente como respaldo;
 - no se modifica ninguna ruta de llamadas, eventos, autenticación o Supabase.
 
 Pruebas web, con Node 24:
@@ -518,8 +544,9 @@ la rama de visión.
 - compatibilidad temporal con una respuesta sin `vision_votes`;
 - diagnóstico opcional `vision_local_shadow_result`, siempre sin voto;
 - registro de los seis diagnósticos y de la regla final;
-- confianza final calculada únicamente con la fuente que autorizó la decisión;
-- regla conservadora de la sección 4.4.
+- confianza final calculada con los votos ganadores de ambas fuentes, o solo
+  con el proveedor cuando este resuelve un empate;
+- votación conjunta y desempate de la sección 4.4.
 
 ### 10.3 Elementos que no se copian desde la rama de visión
 
@@ -641,7 +668,7 @@ La integración no se aprueba hasta verificar también:
 
 No crear un único commit gigante. Usar commits reversibles:
 
-1. `feat(vision): integrar MobileNetV3 y votos independientes`
+1. `feat(vision): integrar modelos locales y votos independientes`
    - servicio, modelo, reglas y pruebas;
 2. `feat(web): propagar votos del servicio de vision`
    - únicamente los dos archivos del contrato web;
@@ -649,6 +676,10 @@ No crear un único commit gigante. Usar commits reversibles:
    - ESP32-CAM y receptor Uno de prueba;
 4. `docs(vision): documentar integracion segura con Mega`
    - resultados, contrato y documentación actualizada.
+
+La promoción posterior del candidato activo se registra por separado como
+`fix(vision): activar MobileNetV2 tras comparacion operativa`, incluyendo el
+binario, sus manifiestos, la prueba de hash y el respaldo íntegro de V3 INT8.
 
 Antes de cada commit:
 
@@ -696,7 +727,7 @@ verdaderos:
 
 - [ ] rama creada desde la `main` más reciente;
 - [ ] ningún secreto aparece en `git status` o `git diff`;
-- [ ] SHA-256 del MobileNetV3 activo coincide;
+- [ ] SHA-256 del MobileNetV2 activo coincide;
 - [ ] 20 pruebas automatizadas aprobadas;
 - [ ] 118/118 casos formales del sistema experto aprobados;
 - [ ] `npm run lint` aprobado;
