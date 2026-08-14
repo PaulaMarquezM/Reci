@@ -444,9 +444,9 @@ python3 tests/test_cases.py
 shasum -a 256 model/model.tflite
 ```
 
-Resultados de referencia antes de integrar:
+Resultados comprobados en la rama de integración el 13 de agosto de 2026:
 
-- `pytest`: 20 pruebas aprobadas;
+- `pytest`: 49 pruebas aprobadas;
 - sistema experto: 118/118;
 - SHA-256 de MobileNetV2 activo:
   `da71c12244076c1fe8f206a444f0c7fad9af467f813976acd40e027ae62f56b1`.
@@ -472,7 +472,20 @@ No se usan umbrales de confianza inventados. Si el equipo desea un umbral del
 modelo local, debe calibrarlo con un conjunto reservado que contenga objetos
 ajenos; no se elige durante la prueba mirando resultados individuales.
 
+La política del firmware vive en `VisionVotingPolicy.h`, que no depende de
+Arduino y se compila también como programa nativo durante `pytest`. La prueba
+compara Python y C++ en las 216 combinaciones válidas de tres diagnósticos del
+proveedor (`plastico`, `vidrio`, `desconocido`) y tres votos binarios locales.
+Además, la matriz de fallos cubre captura ausente, timeout, HTTP no exitoso,
+JSON inválido, contrato ausente, voto duplicado, fuente desconocida y modelo
+local incompleto. Todo rechazo exige `NO_CMD`.
+
 ## 9. Fase D — integrar el contrato en Next.js
+
+Esta fase queda fuera del alcance actual del equipo de visión. No se realizaron
+cambios nuevos en `web/` ni se atribuyen sus validaciones a esta sesión. El
+equipo responsable de web debe ejecutar sus propias comprobaciones antes del
+cierre general del proyecto.
 
 Antes de editar `web/`, leer completo `web/AGENTS.md`. La versión principal usa
 Node 24 y Next.js 16.3; no copiar `package.json`, `.nvmrc` ni
@@ -720,29 +733,52 @@ git push -u origin integration/vision-main-20260813
 - El punto de retorno de software principal auditado es `96aaa96`; la fuente de
   visión probada es `7c375c4`.
 
+### 13.1 Evidencia de software registrada el 13 de agosto de 2026
+
+No se capturaron fotografías nuevas ni se amplió el conjunto de datos. Las
+comparaciones usan únicamente las 1.000 capturas OV3660/QVGA ya disponibles y
+los casos formales existentes.
+
+- 49/49 pruebas `pytest` aprobadas.
+- 118/118 pruebas formales del sistema experto aprobadas.
+- Paridad Python–firmware aprobada en 216 combinaciones válidas de seis votos.
+- Matriz simulada de fallos aprobada sin `CMD:CLASSIFY` en rechazos.
+- Guardas estáticas aprobadas para HTTPS, NTP, `ReciHttpClient`,
+  `RobotCallDispatcher`, llamadas, contexto de puntos, QR y eventos.
+- Guardas estáticas aprobadas para pines, calibraciones, compuertas,
+  navegación y obstáculos del Mega.
+- ESP32-CAM y Mega compilados correctamente después de los cambios.
+- MobileNetV2 activo verificado por SHA-256.
+- Commits publicados únicamente en `integration/vision-main-20260813`.
+
+Las guardas de código reducen el riesgo de regresión, pero no sustituyen las
+pruebas físicas de servos, motores, segunda orden ni ruta completa. Esos puntos
+permanecen pendientes y no se marcan como aprobados.
+
 ## 14. Definición de terminado
 
 La integración está lista para revisión solo cuando todos estos puntos sean
 verdaderos:
 
-- [ ] rama creada desde la `main` más reciente;
-- [ ] ningún secreto aparece en `git status` o `git diff`;
-- [ ] SHA-256 del MobileNetV2 activo coincide;
-- [ ] 20 pruebas automatizadas aprobadas;
-- [ ] 118/118 casos formales del sistema experto aprobados;
-- [ ] `npm run lint` aprobado;
-- [ ] `npm run build` aprobado con Node 24;
-- [ ] ESP32-CAM compila conservando HTTPS y `RobotCallDispatcher`;
-- [ ] OV3660 reporta PID `0x3660` y trabaja en QVGA;
-- [ ] Uno recibe comandos completos a 9600;
+- [x] rama creada desde la `main` más reciente;
+- [x] ningún secreto aparece en `git status` o `git diff`;
+- [x] SHA-256 del MobileNetV2 activo coincide;
+- [x] 49 pruebas automatizadas aprobadas;
+- [x] 118/118 casos formales del sistema experto aprobados;
+- [ ] validación web externa: `npm run lint`;
+- [ ] validación web externa: `npm run build` con Node 24;
+- [x] ESP32-CAM compila conservando HTTPS y `RobotCallDispatcher`;
+- [x] OV3660 reporta PID `0x3660` y trabaja en QVGA;
+- [x] Uno recibe comandos completos a 9600;
 - [ ] vidrio y plástico conocidos se clasifican correctamente;
-- [ ] objeto desconocido no genera `CMD:CLASSIFY`;
-- [ ] error de Wi-Fi/servicio no abre compuertas;
+- [x] objeto desconocido no genera `CMD:CLASSIFY` en prueba real y automatizada;
+- [ ] error de Wi-Fi/servicio no abre compuertas físicamente; por software ya
+      se comprobó que no genera `CMD:CLASSIFY`;
 - [ ] Mega abre solo la compuerta indicada y la cierra;
 - [ ] una segunda orden no abre otra compuerta mientras la primera está activa;
 - [ ] navegación, obstáculo, llamada, llegada, puntos y QR siguen funcionando;
-- [ ] cambios separados en commits revisables;
-- [ ] rama subida para revisión, sin modificar `main` directamente.
+- [x] cambios separados en commits revisables;
+- [x] rama subida para revisión, sin modificar `main` directamente.
 
 ## 15. Instrucción lista para el agente de la sesión
 

@@ -185,9 +185,12 @@ python3 tests/test_cases.py
 python3 -m pytest -q
 ```
 
-`test_cases.py` valida los 118 casos formales del sistema experto; `pytest`
-verifica además el servicio, la inferencia local y la votación. Corre ambas
-pruebas después de tocar reglas, el modelo local o la política de decisión.
+`test_cases.py` valida los 118 casos formales del sistema experto. La suite de
+`pytest` tiene actualmente 49 pruebas: verifica el servicio, la inferencia
+local, las 216 combinaciones válidas de seis votos contra la política C++ que
+usa el ESP32, la matriz de fallos sin `CMD:CLASSIFY` y las guardas de regresión
+del ESP32/Mega. Corre ambas pruebas después de tocar reglas, el modelo local,
+el firmware o la política de decisión.
 
 ## Contenedor
 
