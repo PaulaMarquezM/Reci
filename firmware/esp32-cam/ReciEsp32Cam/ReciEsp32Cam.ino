@@ -50,6 +50,7 @@ constexpr unsigned long kClockSyncTimeoutMs = 15000UL;
 constexpr uint16_t kVisionHttpTimeoutMs = 30'000;
 constexpr uint8_t kCaptureCount = 3;
 constexpr char kBoundary[] = "ReciMaterialBoundary2026";
+constexpr char kVotingPolicy[] = "seis-votos-v2-local-unanime";
 
 HardwareSerial mega(1);
 ReciRobotCallDispatcher dispatcher(mega);
@@ -235,39 +236,38 @@ void addVote(MaterialVotes& votes, const String& material, float confidence) {
   }
 }
 
-String majorityMaterial(const MaterialVotes& votes) {
-  if (votes.plastico < 2 && votes.vidrio < 2) return "desconocido";
-  if (votes.plastico == votes.vidrio) return "desconocido";
-  return votes.plastico > votes.vidrio ? "plastico" : "vidrio";
-}
-
 FinalDecision decideMaterial(const MaterialVotes& providerVotes,
                              const MaterialVotes& localVotes,
                              bool capturesComplete) {
   if (!capturesComplete) return {"desconocido", "respuesta_incompleta"};
 
-  const String providerMaterial = majorityMaterial(providerVotes);
-  if (providerMaterial != "desconocido") {
-    return {providerMaterial, "openai_sistema_experto"};
-  }
-
   const uint8_t providerValidVotes = providerVotes.plastico + providerVotes.vidrio;
   if (providerValidVotes == 0) {
-    return {"desconocido", "tres_abstenciones_proveedor"};
-  }
-  if (providerValidVotes != 1) {
-    return {"desconocido", "proveedor_contradictorio"};
+    if (localVotes.plastico == kCaptureCount) {
+      return {"plastico", "modelo_local_unanime"};
+    }
+    if (localVotes.vidrio == kCaptureCount) {
+      return {"vidrio", "modelo_local_unanime"};
+    }
+    return {"desconocido", "modelo_local_no_unanime"};
   }
 
-  const String providerSingleVote = providerVotes.plastico == 1 ? "plastico" : "vidrio";
-  const String localMaterial = majorityMaterial(localVotes);
-  if (localMaterial == providerSingleVote) {
-    return {localMaterial, "modelo_local_respaldo"};
+  const uint8_t totalPlastic = providerVotes.plastico + localVotes.plastico;
+  const uint8_t totalGlass = providerVotes.vidrio + localVotes.vidrio;
+  if (totalPlastic > totalGlass) {
+    return {"plastico", "votacion_conjunta"};
   }
-  if (localMaterial != "desconocido") {
-    return {"desconocido", "fuentes_contradictorias"};
+  if (totalGlass > totalPlastic) {
+    return {"vidrio", "votacion_conjunta"};
   }
-  return {"desconocido", "sin_mayoria"};
+
+  if (providerVotes.plastico > providerVotes.vidrio) {
+    return {"plastico", "desempate_openai_sistema_experto"};
+  }
+  if (providerVotes.vidrio > providerVotes.plastico) {
+    return {"vidrio", "desempate_openai_sistema_experto"};
+  }
+  return {"desconocido", "confusion_sin_resolver"};
 }
 
 // Registra el resultado final (ya votado) en recycle_events — las 3 fotos
@@ -317,6 +317,8 @@ void classifyResidue() {
   if (WiFi.status() != WL_CONNECTED && !connectWiFi()) return;
 
   Serial.println(F("--- CLASIFICANDO RESIDUO: 3 fotos ---"));
+  Serial.print(F("Politica de votacion: "));
+  Serial.println(kVotingPolicy);
   sendMega("CMD:FACE:thinking");
   showOnLcd("Analizando residuo", "No lo retires");
   MaterialVotes providerVotes;
@@ -382,7 +384,7 @@ void classifyResidue() {
           providerConfidence = confidence;
           addVote(providerVotes, material, confidence);
         } else {
-          // MobileNetV3-Large es binario: una abstención local equivale a
+          // MobileNetV2 es binario: una abstención local equivale a
           // respuesta incompleta, no a permiso para usar su mayoría.
           if (localReceived || !knownMaterial || !countsAsVote) {
             responseComplete = false;
@@ -429,6 +431,9 @@ void classifyResidue() {
                 providerVotes.plastico, providerVotes.vidrio, providerVotes.abstenciones);
   Serial.printf("Votos modelo: plastico=%u | vidrio=%u | abstenciones=%u\n",
                 localVotes.plastico, localVotes.vidrio, localVotes.abstenciones);
+  Serial.printf("Total conjunto: plastico=%u | vidrio=%u\n",
+                providerVotes.plastico + localVotes.plastico,
+                providerVotes.vidrio + localVotes.vidrio);
 
   const FinalDecision decision = decideMaterial(providerVotes, localVotes, capturesComplete);
   if (decision.material == "desconocido") {
@@ -445,12 +450,24 @@ void classifyResidue() {
   Serial.print(F("Regla de decision: "));
   Serial.println(decision.source);
 
-  const MaterialVotes& winningVotes = decision.source == "openai_sistema_experto"
-      ? providerVotes
-      : localVotes;
-  const float winningConfidence = decision.material == "plastico"
-      ? winningVotes.plasticoConfidence / winningVotes.plastico
-      : winningVotes.vidrioConfidence / winningVotes.vidrio;
+  const bool providerTieBreak = decision.source == "desempate_openai_sistema_experto";
+  const uint8_t winningCount = decision.material == "plastico"
+      ? (providerTieBreak
+          ? providerVotes.plastico
+          : providerVotes.plastico + localVotes.plastico)
+      : (providerTieBreak
+          ? providerVotes.vidrio
+          : providerVotes.vidrio + localVotes.vidrio);
+  const float winningConfidenceSum = decision.material == "plastico"
+      ? (providerTieBreak
+          ? providerVotes.plasticoConfidence
+          : providerVotes.plasticoConfidence + localVotes.plasticoConfidence)
+      : (providerTieBreak
+          ? providerVotes.vidrioConfidence
+          : providerVotes.vidrioConfidence + localVotes.vidrioConfidence);
+  const float winningConfidence = winningCount > 0
+      ? winningConfidenceSum / winningCount
+      : 0.0F;
   const String claimCode = recordRecycleEvent(decision.material, winningConfidence);
 
   sendMega("CMD:CLASSIFY:" + decision.material);
@@ -481,6 +498,9 @@ void setup() {
   pinMode(kFlashLedPin, OUTPUT);
   digitalWrite(kFlashLedPin, LOW);
   delay(500);
+
+  Serial.print(F("Firmware de votacion: "));
+  Serial.println(kVotingPolicy);
 
   showOnLcd("Hola, soy Reci", "Preparando camara");
   if (!startCamera()) return;

@@ -149,7 +149,7 @@ def health() -> dict[str, Any]:
         "votacion": {
             "capturas_por_residuo": 3,
             "votos_por_captura": "proveedor y modelo local",
-            "decision": "mayoria_proveedor_y_respaldo_local_en_firmware",
+            "decision": "mayoria_conjunta_de_seis_votos_y_desempate_del_proveedor_en_firmware",
         },
         "advertencias": _classifier.advertencias,
     }

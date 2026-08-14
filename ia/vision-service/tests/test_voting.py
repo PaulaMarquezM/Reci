@@ -47,39 +47,53 @@ def _votes(materials: list[str]) -> list[dict]:
             for material in materials]
 
 
-def test_mayoria_de_openai_autoriza_aun_con_votos_locales_distintos():
+def test_mayoria_total_de_los_seis_votos_gana():
     result = decide_material(_votes(["plastico", "plastico", "vidrio"]),
-                             _votes(["vidrio", "vidrio", "plastico"]))
+                             _votes(["plastico", "vidrio", "plastico"]))
 
-    assert result == {"material": "plastico", "source": "openai_sistema_experto"}
+    assert result == {"material": "plastico", "source": "votacion_conjunta"}
 
 
-def test_un_voto_openai_y_mayoria_local_coincidente_autorizan():
+def test_un_voto_openai_y_mayoria_local_coincidente_se_suman():
     result = decide_material(_votes(["plastico", "desconocido", "desconocido"]),
                              _votes(["plastico", "plastico", "vidrio"]))
 
-    assert result == {"material": "plastico", "source": "modelo_local_respaldo"}
+    assert result == {"material": "plastico", "source": "votacion_conjunta"}
 
 
-def test_tres_abstenciones_openai_rechazan_mayoria_local_binaria():
+def test_tres_abstenciones_openai_y_modelo_local_unanime_autorizan():
+    result = decide_material(_votes(["desconocido", "desconocido", "desconocido"]),
+                             _votes(["vidrio", "vidrio", "vidrio"]))
+
+    assert result == {"material": "vidrio", "source": "modelo_local_unanime"}
+
+
+def test_tres_abstenciones_openai_y_modelo_local_dos_a_uno_rechazan():
     result = decide_material(_votes(["desconocido", "desconocido", "desconocido"]),
                              _votes(["vidrio", "vidrio", "plastico"]))
 
-    assert result == {"material": "desconocido", "source": "tres_abstenciones_proveedor"}
+    assert result == {"material": "desconocido", "source": "modelo_local_no_unanime"}
 
 
-def test_respaldo_local_contrario_al_unico_voto_openai_rechaza():
-    result = decide_material(_votes(["plastico", "desconocido", "desconocido"]),
+def test_caso_real_un_voto_openai_contrario_y_tres_locales_da_vidrio():
+    result = decide_material(_votes(["desconocido", "plastico", "desconocido"]),
+                             _votes(["vidrio", "vidrio", "vidrio"]))
+
+    assert result == {"material": "vidrio", "source": "votacion_conjunta"}
+
+
+def test_empate_tres_a_tres_lo_desempata_openai_sistema_experto():
+    result = decide_material(_votes(["plastico", "plastico", "vidrio"]),
                              _votes(["vidrio", "vidrio", "plastico"]))
 
-    assert result == {"material": "desconocido", "source": "fuentes_contradictorias"}
+    assert result == {"material": "plastico", "source": "desempate_openai_sistema_experto"}
 
 
-def test_votos_validos_del_proveedor_contradictorios_rechazan():
-    result = decide_material(_votes(["plastico", "vidrio", "desconocido"]),
-                             _votes(["plastico", "plastico", "plastico"]))
+def test_empate_tres_a_tres_con_mayoria_openai_desempata():
+    result = decide_material(_votes(["vidrio", "vidrio", "plastico"]),
+                             _votes(["plastico", "plastico", "vidrio"]))
 
-    assert result == {"material": "desconocido", "source": "proveedor_contradictorio"}
+    assert result == {"material": "vidrio", "source": "desempate_openai_sistema_experto"}
 
 
 def test_captura_ausente_o_respuesta_incompleta_rechaza():
