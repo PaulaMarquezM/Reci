@@ -1,9 +1,9 @@
 # ESP32-CAM de Reci
 
-Este sketch es para el módulo **AI Thinker ESP32-CAM**. Para clasificar un
-residuo toma tres fotos con flash, consulta el backend y solo manda abrir una
-compuerta cuando existe una mayoría segura. No guarda fotos ni contiene
-credenciales de Supabase.
+Este sketch es para el módulo **AI Thinker ESP32-CAM** con sensor OV3660. Para
+clasificar un residuo toma tres fotos QVGA con iluminación externa, consulta el
+backend y reúne seis diagnósticos: tres de OpenAI+sistema experto y tres del
+MobileNetV2 local. No guarda fotos ni contiene credenciales de Supabase.
 
 ## Antes de compilar
 
@@ -71,26 +71,28 @@ el resultado de cada reconocimiento.
    `VISION_SERVICE_URL` y `VISION_SERVICE_API_KEY`.
 2. Pon un único residuo centrado frente a la cámara, con fondo mate y luz frontal.
 3. En el Monitor Serial (115200) escribe **C** y envíalo.
-4. La ESP32 toma tres fotos VGA (QVGA sin PSRAM). Si al menos dos dicen
-   `vidrio` o `plastico`, manda `CMD:CLASSIFY:<material>` al Mega.
+4. La ESP32 toma tres fotos QVGA y aplica la política común de seis votos. En
+   empate decide la preferencia del proveedor. Si el proveedor se abstiene en
+   las tres fotos, el modelo local solo puede autorizar con unanimidad 3/3.
+5. Solo una decisión final `vidrio` o `plastico` manda
+   `CMD:CLASSIFY:<material>` al Mega. Desconocido, error o respuesta incompleta
+   no envían ese comando.
 
 Las fotos de esta validación no crean eventos ni puntos: la persistencia debe
 ocurrir una sola vez después del voto mayoritario.
 
 ## Probar primero la conexión con la app (sin cámara ni movimiento)
 
-1. Con RECI físicamente en **BASE**, carga `ReciRutaDemo.ino` al Mega. Antes de
-   conectar la ESP32, deja `kEsp32CamConectada = false`.
+1. Con RECI físicamente en **BASE**, carga `ReciRutaDemo.ino` al Mega. El
+   archivo final tiene la cámara y el enlace bidireccional activados; antes de
+   encender, instala obligatoriamente el divisor de nivel entre D16 y GPIO13.
 2. Carga este sketch a la ESP32-CAM y confirma en su Monitor Serial (115200)
    que muestra `Wi-Fi listo: ...`. Su primer mensaje hará aparecer en el LCD
    del Mega `Hola, soy RECI / Envia C para leer`: eso confirma el cable serie.
-3. Solo entonces cambia en el Mega `kEsp32CamConectada` a `true` y vuelve a
-   cargarlo. Nunca lo actives con RX2/D17 desconectado, porque un pin flotante
-   se interpreta como órdenes aleatorias.
-4. Reinicia ambos equipos, abre el Monitor Serial del Mega a **9600**, y envía
+3. Reinicia ambos equipos, abre el Monitor Serial del Mega a **9600**, y envía
    `SET:BASE` una sola vez. Ese paso confirma la posición real; no se hace de
    forma automática porque RECI no tiene GPS ni sensores de línea.
-5. Desde la web, usa el botón para llamar a RECI a P1 o P2. La ESP consulta la
+4. Desde la web, usa el botón para llamar a RECI a P1 o P2. La ESP consulta la
    llamada cada tres segundos, envía la orden al Mega y, al llegar, el LCD
    muestra `Hola, <nombre> / Soy RECI`.
 

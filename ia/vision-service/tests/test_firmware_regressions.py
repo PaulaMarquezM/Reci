@@ -117,6 +117,8 @@ def test_mega_conserva_pines_calibraciones_y_bloqueos_de_seguridad():
             "constexpr unsigned long kBaseAP1Ms = 8000UL;",
             "constexpr unsigned long kP1AP2Ms = 8000UL;",
             "constexpr unsigned long kSerialBaud = 9600UL;",
+            "constexpr bool kEsp32CamConectada = true;",
+            "constexpr bool kEsp32CamBidireccional = true;",
             "constexpr uint8_t kDireccionOled = 0x3C;",
             "constexpr uint8_t kDireccionLcd = 0x27;",
         ),

@@ -99,10 +99,10 @@ constexpr size_t kComandoMax = 64;
 // y mensajes de "comando inválido". Se activa al integrar la ESP32-CAM.
 // Activado: la ESP32-CAM ya está conectada a RX2/TX2 con divisor de nivel.
 constexpr bool kEsp32CamConectada = true;
-// Durante la primera prueba solo se conecta ESP32 GPIO14/TX -> Mega D17/RX2.
-// No habilitar eventos Mega -> ESP32 hasta conectar D16/TX2 a GPIO13/RX con
-// el divisor resistivo obligatorio de 5 V a 3,3 V.
-constexpr bool kEsp32CamBidireccional = false;
+// La presentación usa comunicación en ambos sentidos. D16/TX2 solo puede
+// conectarse a GPIO13/RX mediante el divisor resistivo obligatorio de 5 V a
+// 3,3 V (1 kΩ en serie y 2 kΩ a GND). Nunca unir esos pines directamente.
+constexpr bool kEsp32CamBidireccional = true;
 
 enum class Punto : uint8_t { Desconocido, Base, P1, P2 };
 enum class Modo : uint8_t { Detenido, ManualAdelante, ManualAtras, ManualIzquierda,
