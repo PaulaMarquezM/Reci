@@ -1,10 +1,10 @@
 """Votos independientes por cada captura de la ESP32-CAM.
 
 El proveedor (OpenAI + heurísticas + sistema experto) y el modelo TFLite no
-se combinan dentro de una misma foto. Cada uno aporta un voto visible; el
-firmware reúne los votos de las tres capturas. OpenAI es la señal primaria
-porque la validación actual demuestra mayor precisión; el modelo local queda
-como respaldo cuando OpenAI no logra mayoría.
+se fusionan dentro de una misma foto. Cada uno aporta un voto visible y el
+firmware reúne los seis votos de las tres capturas en una sola elección.
+``desconocido`` es una abstención. Si plástico y vidrio empatan, decide la
+preferencia de los votos válidos del proveedor.
 """
 
 from __future__ import annotations
@@ -56,15 +56,6 @@ def build_photo_votes(
     return votes
 
 
-def majority_material(materials: list[str]) -> str:
-    """Devuelve mayoría estricta de una señal o ``desconocido``."""
-    plastic = materials.count("plastico")
-    glass = materials.count("vidrio")
-    if max(plastic, glass) < 2 or plastic == glass:
-        return "desconocido"
-    return "plastico" if plastic > glass else "vidrio"
-
-
 def _is_complete(votes: list[dict[str, Any]], *, source: str) -> bool:
     """Comprueba que llegaron los tres diagnósticos utilizables de una fuente.
 
@@ -98,13 +89,13 @@ def decide_material(
     provider_votes: list[dict[str, Any]],
     local_votes: list[dict[str, Any]],
 ) -> dict[str, str]:
-    """Decide con la política conservadora compartida con el firmware.
+    """Decide con los seis votos individuales de proveedor y modelo local.
 
-    1. Una mayoría 2/3 del proveedor autoriza la clase.
-    2. Un único voto válido del proveedor requiere una mayoría local 2/3 de
-       la misma clase.
-    3. Tres abstenciones, fuentes contradictorias, empates, errores o
-       respuestas incompletas se rechazan siempre.
+    1. Se suman los votos válidos de ambas fuentes; ``desconocido`` se abstiene.
+    2. Gana la clase con más votos totales.
+    3. Si el total empata, desempata la preferencia del proveedor.
+    4. Una respuesta incompleta o un empate que el proveedor no pueda resolver
+       devuelve ``desconocido``.
     """
     if not _is_complete(provider_votes, source="proveedor") or not _is_complete(
         local_votes, source="modelo_local"
@@ -112,20 +103,33 @@ def decide_material(
         return {"material": "desconocido", "source": "respuesta_incompleta"}
 
     provider_materials = _materials_that_count(provider_votes)
-    provider = majority_material(provider_materials)
-    if provider != "desconocido":
-        return {"material": provider, "source": "openai_sistema_experto"}
+    local_materials = _materials_that_count(local_votes)
 
+    # Cuando OpenAI+sistema experto se abstiene en las tres fotos, no existe
+    # evidencia del proveedor para sumar o desempatar. En ese caso el modelo
+    # local binario solo autoriza una clase si fue unánime en las tres capturas.
+    # Una mayoría 2–1 mantiene el rechazo para no convertir una duda local en
+    # una apertura de compuerta.
     if not provider_materials:
-        return {"material": "desconocido", "source": "tres_abstenciones_proveedor"}
+        if local_materials.count("plastico") == 3:
+            return {"material": "plastico", "source": "modelo_local_unanime"}
+        if local_materials.count("vidrio") == 3:
+            return {"material": "vidrio", "source": "modelo_local_unanime"}
+        return {"material": "desconocido", "source": "modelo_local_no_unanime"}
 
-    if len(provider_materials) != 1:
-        return {"material": "desconocido", "source": "proveedor_contradictorio"}
+    all_materials = provider_materials + local_materials
+    plastic = all_materials.count("plastico")
+    glass = all_materials.count("vidrio")
 
-    provider_material = provider_materials[0]
-    local = majority_material(_materials_that_count(local_votes))
-    if local == provider_material:
-        return {"material": local, "source": "modelo_local_respaldo"}
-    if local in MATERIALS:
-        return {"material": "desconocido", "source": "fuentes_contradictorias"}
-    return {"material": "desconocido", "source": "sin_mayoria"}
+    if plastic > glass:
+        return {"material": "plastico", "source": "votacion_conjunta"}
+    if glass > plastic:
+        return {"material": "vidrio", "source": "votacion_conjunta"}
+
+    provider_plastic = provider_materials.count("plastico")
+    provider_glass = provider_materials.count("vidrio")
+    if provider_plastic > provider_glass:
+        return {"material": "plastico", "source": "desempate_openai_sistema_experto"}
+    if provider_glass > provider_plastic:
+        return {"material": "vidrio", "source": "desempate_openai_sistema_experto"}
+    return {"material": "desconocido", "source": "confusion_sin_resolver"}
