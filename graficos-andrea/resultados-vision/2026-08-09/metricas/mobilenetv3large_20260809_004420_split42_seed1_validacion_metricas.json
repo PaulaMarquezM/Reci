@@ -1,0 +1,33 @@
+{
+  "matriz_confusion": [
+    [
+      94,
+      6
+    ],
+    [
+      5,
+      94
+    ]
+  ],
+  "metricas_por_clase": {
+    "plastico": {
+      "precision": 0.9494949494949495,
+      "recall": 0.94,
+      "f1": 0.9447236180904524,
+      "soporte": 100
+    },
+    "vidrio": {
+      "precision": 0.94,
+      "recall": 0.9494949494949495,
+      "f1": 0.9447236180904524,
+      "soporte": 99
+    }
+  },
+  "macro_f1": 0.9447236180904524,
+  "exactitud_balanceada": 0.9447474747474747,
+  "exactitud": 0.9447236180904522,
+  "errores_confianza_alta": 1,
+  "total": 199,
+  "val_loss": 0.15045064687728882,
+  "val_accuracy": 0.9447236061096191
+}
