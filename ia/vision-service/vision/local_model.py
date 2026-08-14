@@ -1,4 +1,4 @@
-"""Inferencia binaria local con el MobileNetV2/TFLite entrenado en RECI2."""
+"""Inferencia binaria local con el modelo TFLite activo de RECI."""
 
 from __future__ import annotations
 
@@ -118,9 +118,9 @@ class LocalMaterialClassifier:
     def _quantize_input(image: np.ndarray, details: dict[str, Any]) -> np.ndarray:
         """Convierte una imagen RGB al tipo de entrada que espera TFLite.
 
-        El modelo histórico usa ``float32`` y el MobileNetV3-Large activo se
-        exportó como ``int8``. La escala y el punto cero permiten atender ambos
-        formatos sin cambiar el flujo de inferencia.
+        El MobileNetV2 activo usa ``float32``. La compatibilidad con escala y
+        punto cero se conserva para evaluar candidatos ``int8`` en modo sombra
+        sin cambiar el flujo de inferencia.
         """
         dtype = np.dtype(details["dtype"])
         values = image.astype(np.float32)
