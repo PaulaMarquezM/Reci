@@ -94,8 +94,10 @@ def decide_material(
     1. Se suman los votos válidos de ambas fuentes; ``desconocido`` se abstiene.
     2. Gana la clase con más votos totales.
     3. Si el total empata, desempata la preferencia del proveedor.
-    4. Una respuesta incompleta o un empate que el proveedor no pueda resolver
-       devuelve ``desconocido``.
+    4. Si el proveedor se abstiene tres veces, decide una mayoría 2/3 del
+       modelo local.
+    5. Una respuesta incompleta o un empate sin resolver devuelve
+       ``desconocido``.
     """
     if not _is_complete(provider_votes, source="proveedor") or not _is_complete(
         local_votes, source="modelo_local"
@@ -105,17 +107,17 @@ def decide_material(
     provider_materials = _materials_that_count(provider_votes)
     local_materials = _materials_that_count(local_votes)
 
-    # Cuando OpenAI+sistema experto se abstiene en las tres fotos, no existe
-    # evidencia del proveedor para sumar o desempatar. En ese caso el modelo
-    # local binario solo autoriza una clase si fue unánime en las tres capturas.
-    # Una mayoría 2–1 mantiene el rechazo para no convertir una duda local en
-    # una apertura de compuerta.
+    # Si OpenAI+sistema experto se abstiene en las tres fotos, el modelo local
+    # actúa como respaldo. Se requieren al menos dos votos coincidentes; un solo
+    # voto válido no basta para abrir una compuerta.
     if not provider_materials:
-        if local_materials.count("plastico") == 3:
-            return {"material": "plastico", "source": "modelo_local_unanime"}
-        if local_materials.count("vidrio") == 3:
-            return {"material": "vidrio", "source": "modelo_local_unanime"}
-        return {"material": "desconocido", "source": "modelo_local_no_unanime"}
+        local_plastic = local_materials.count("plastico")
+        local_glass = local_materials.count("vidrio")
+        if local_plastic >= 2 and local_plastic > local_glass:
+            return {"material": "plastico", "source": "modelo_local_mayoria"}
+        if local_glass >= 2 and local_glass > local_plastic:
+            return {"material": "vidrio", "source": "modelo_local_mayoria"}
+        return {"material": "desconocido", "source": "modelo_local_sin_mayoria"}
 
     all_materials = provider_materials + local_materials
     plastic = all_materials.count("plastico")

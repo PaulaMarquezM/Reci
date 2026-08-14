@@ -10,12 +10,12 @@ dentro de una misma foto.
 
 La ESP32-CAM mantiene tres capturas por depósito: esto produce seis
 diagnósticos visibles, tres del modelo propio y tres del proveedor, sobre
-exactamente las mismas imágenes. La decisión es conservadora: una mayoría
+exactamente las mismas imágenes. La decisión es híbrida: una mayoría
 2/3 de OpenAI+sistema experto autoriza; si el proveedor aporta exactamente un
 voto válido, MobileNetV3-Large solo lo respalda con una mayoría 2/3 de la
-misma clase. Tres abstenciones del proveedor, contradicción entre fuentes,
-empate, error o respuesta incompleta devuelven `desconocido`. El modelo local
-binario nunca abre una compuerta por sí solo.
+misma clase. Si el proveedor se abstiene en las tres fotos, una mayoría 2/3
+del modelo local actúa como respaldo. Empate, falta de mayoría local, error o
+respuesta incompleta devuelven `desconocido`.
 
 No persiste imágenes ni atributos: cada petición es independiente. Ver
 [`docs/DECISION-SERVICIO-VISION.md`](../../docs/DECISION-SERVICIO-VISION.md)

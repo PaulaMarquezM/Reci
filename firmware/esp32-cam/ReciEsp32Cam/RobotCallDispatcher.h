@@ -28,8 +28,19 @@ class ReciRobotCallDispatcher {
     const unsigned long now = millis();
     pinMode(kMegaReturnPulsePin, INPUT);
     megaPulseEnabledAt_ = now + kMegaReturnPulseIgnoreMs;
-    megaPulseActive_ = digitalRead(kMegaReturnPulsePin) == LOW;
-    if (megaPulseActive_) megaPulseStartedAt_ = now;
+    // Las llamadas HTTPS y la clasificación pueden bloquear loop() durante
+    // varios segundos. Capturamos ambos flancos por interrupción para que un
+    // pulso real de llegada no se convierta en una duración enorme ni se
+    // pierda mientras la nube responde.
+    portENTER_CRITICAL(&megaPulseMux_);
+    megaPulseActive_ = false;
+    megaPulseCaptured_ = false;
+    megaPulseStartedAtUs_ = 0;
+    megaPulseDurationUs_ = 0;
+    portEXIT_CRITICAL(&megaPulseMux_);
+    attachInterruptArg(digitalPinToInterrupt(kMegaReturnPulsePin),
+                       captureMegaReturnEdge, this, CHANGE);
+    Serial.println(F("CALLS: retorno Mega por interrupcion en GPIO13."));
     nextBasePositionAt_ = now + kInitialBasePositionDelayMs;
     nextPollAt_ = now + kInitialPollDelayMs;
   }
@@ -126,8 +137,11 @@ class ReciRobotCallDispatcher {
   unsigned long recyclePromptAt_ = 0;
   unsigned long recycleCaptureAt_ = 0;
   unsigned long suppressRecycleUntil_ = 0;
-  bool megaPulseActive_ = false;
-  unsigned long megaPulseStartedAt_ = 0;
+  portMUX_TYPE megaPulseMux_ = portMUX_INITIALIZER_UNLOCKED;
+  volatile bool megaPulseActive_ = false;
+  volatile bool megaPulseCaptured_ = false;
+  volatile uint32_t megaPulseStartedAtUs_ = 0;
+  volatile uint32_t megaPulseDurationUs_ = 0;
   unsigned long megaPulseEnabledAt_ = 0;
 
   void sendMegaCommand(const String& command) {
@@ -404,27 +418,46 @@ class ReciRobotCallDispatcher {
     }
   }
 
-  void readMegaEvents() {
+  static void captureMegaReturnEdge(void* context) {
+    auto* dispatcher = static_cast<ReciRobotCallDispatcher*>(context);
     const bool levelLow = digitalRead(kMegaReturnPulsePin) == LOW;
-    const unsigned long now = millis();
+    const uint32_t nowUs = micros();
 
-    if (static_cast<long>(now - megaPulseEnabledAt_) < 0) {
-      megaPulseActive_ = levelLow;
-      if (levelLow) megaPulseStartedAt_ = now;
-      return;
+    portENTER_CRITICAL_ISR(&dispatcher->megaPulseMux_);
+    if (levelLow) {
+      dispatcher->megaPulseStartedAtUs_ = nowUs;
+      dispatcher->megaPulseActive_ = true;
+    } else if (dispatcher->megaPulseActive_) {
+      // Conservamos el primer evento completo hasta que loop() pueda
+      // procesarlo. Los pulsos de RECI están espaciados y no se solapan.
+      if (!dispatcher->megaPulseCaptured_) {
+        dispatcher->megaPulseDurationUs_ =
+            nowUs - dispatcher->megaPulseStartedAtUs_;
+        dispatcher->megaPulseCaptured_ = true;
+      }
+      dispatcher->megaPulseActive_ = false;
     }
+    portEXIT_CRITICAL_ISR(&dispatcher->megaPulseMux_);
+  }
 
-    if (levelLow && !megaPulseActive_) {
-      megaPulseActive_ = true;
-      megaPulseStartedAt_ = now;
-      return;
-    }
+  void readMegaEvents() {
+    uint32_t durationUs = 0;
+    bool captured = false;
 
-    if (!levelLow && megaPulseActive_) {
-      megaPulseActive_ = false;
-      if (megaPulseStartedAt_ < megaPulseEnabledAt_) return;
-      processMegaPulse(now - megaPulseStartedAt_);
+    portENTER_CRITICAL(&megaPulseMux_);
+    if (megaPulseCaptured_) {
+      durationUs = megaPulseDurationUs_;
+      megaPulseCaptured_ = false;
+      captured = true;
     }
+    portEXIT_CRITICAL(&megaPulseMux_);
+
+    if (!captured) return;
+    if (static_cast<long>(millis() - megaPulseEnabledAt_) < 0) return;
+
+    // Redondea microsegundos al milisegundo más cercano para conservar las
+    // tolerancias existentes de 180 ms.
+    processMegaPulse((durationUs + 500UL) / 1000UL);
   }
 
   void clearActiveCall() {

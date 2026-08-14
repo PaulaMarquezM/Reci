@@ -5,7 +5,7 @@
   "seleccion_activa": {
     "fecha": "2026-08-13",
     "motivo": "Superó al MobileNetV3-Large INT8 en 1000 capturas OV3660/QVGA usando el pipeline de producción.",
-    "politica": "Tres fotos, dos fuentes por foto, mayoría conjunta; empate resuelto por OpenAI+sistema experto; con tres abstenciones del proveedor el modelo local requiere unanimidad 3/3."
+    "politica": "Tres fotos, dos fuentes por foto, mayoría conjunta; empate resuelto por OpenAI+sistema experto; con tres abstenciones del proveedor decide una mayoría 2/3 del modelo local."
   },
   "clases": [
     "plastico",

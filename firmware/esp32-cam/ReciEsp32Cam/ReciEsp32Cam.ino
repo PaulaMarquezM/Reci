@@ -66,7 +66,10 @@ constexpr unsigned long kPulsoPruebaMs = 4200UL;
 constexpr unsigned long kMegaPulseGapMs = 300UL;
 // La ESP no registra el reciclaje ni concede puntos hasta que el Mega
 // confirme que aceptó la orden de abrir la compuerta.
-constexpr unsigned long kCompuertaAckTimeoutMs = 3000UL;
+// Si el Mega ya estaba terminando un pulso de PRESENCIA, la confirmacion de
+// compuerta queda en la cola prioritaria. Seis segundos cubren ese caso sin
+// repetir la apertura ni cancelar un reciclaje valido.
+constexpr unsigned long kCompuertaAckTimeoutMs = 6000UL;
 constexpr uint8_t kCompuertaIntentos = 2;
 // Protocolo QR por un solo cable GPIO14 -> Mega D17. Un pulso de inicio abre
 // la recepción y ocho pulsos siguientes representan 0-9/A-Z. Así el Mega
@@ -87,8 +90,9 @@ constexpr int32_t kVisionConnectTimeoutMs = 15000;
 constexpr uint16_t kRecycleHttpTimeoutMs = 10000U;
 constexpr int32_t kRecycleConnectTimeoutMs = 5000;
 constexpr uint8_t kCaptureCount = 3;
+constexpr uint8_t kLocalMajorityVotes = (kCaptureCount / 2U) + 1U;
 constexpr char kBoundary[] = "ReciMaterialBoundary2026";
-constexpr char kVotingPolicy[] = "seis-votos-v2-local-unanime";
+constexpr char kVotingPolicy[] = "seis-votos-v3-respaldo-local-mayoria";
 
 void sendMega(const String& command);
 bool sendClaimCodeToMega(String claimCode);
@@ -417,13 +421,15 @@ FinalDecision decideMaterial(const MaterialVotes& providerVotes,
 
   const uint8_t providerValidVotes = providerVotes.plastico + providerVotes.vidrio;
   if (providerValidVotes == 0) {
-    if (localVotes.plastico == kCaptureCount) {
-      return {"plastico", "modelo_local_unanime"};
+    if (localVotes.plastico >= kLocalMajorityVotes &&
+        localVotes.plastico > localVotes.vidrio) {
+      return {"plastico", "modelo_local_mayoria"};
     }
-    if (localVotes.vidrio == kCaptureCount) {
-      return {"vidrio", "modelo_local_unanime"};
+    if (localVotes.vidrio >= kLocalMajorityVotes &&
+        localVotes.vidrio > localVotes.plastico) {
+      return {"vidrio", "modelo_local_mayoria"};
     }
-    return {"desconocido", "modelo_local_no_unanime"};
+    return {"desconocido", "modelo_local_sin_mayoria"};
   }
 
   const uint8_t totalPlastic = providerVotes.plastico + localVotes.plastico;

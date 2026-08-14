@@ -61,18 +61,18 @@ def test_un_voto_openai_y_mayoria_local_coincidente_se_suman():
     assert result == {"material": "plastico", "source": "votacion_conjunta"}
 
 
-def test_tres_abstenciones_openai_y_modelo_local_unanime_autorizan():
+def test_tres_abstenciones_openai_y_modelo_local_unanime_autorizan_por_mayoria():
     result = decide_material(_votes(["desconocido", "desconocido", "desconocido"]),
                              _votes(["vidrio", "vidrio", "vidrio"]))
 
-    assert result == {"material": "vidrio", "source": "modelo_local_unanime"}
+    assert result == {"material": "vidrio", "source": "modelo_local_mayoria"}
 
 
-def test_tres_abstenciones_openai_y_modelo_local_dos_a_uno_rechazan():
+def test_tres_abstenciones_openai_y_modelo_local_dos_a_uno_autorizan():
     result = decide_material(_votes(["desconocido", "desconocido", "desconocido"]),
                              _votes(["vidrio", "vidrio", "plastico"]))
 
-    assert result == {"material": "desconocido", "source": "modelo_local_no_unanime"}
+    assert result == {"material": "vidrio", "source": "modelo_local_mayoria"}
 
 
 def test_caso_real_un_voto_openai_contrario_y_tres_locales_da_vidrio():

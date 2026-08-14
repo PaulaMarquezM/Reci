@@ -129,6 +129,14 @@ constexpr uint8_t kMegaTx2Pin = 16;
 constexpr uint8_t kPulsoEspPin = 17;
 constexpr unsigned long kIgnorarPulsosAlArrancarMs = 3500UL;
 constexpr unsigned long kToleranciaPulsoMs = 120UL;
+// Un cable largo y la conmutacion de motores/servos pueden producir caidas
+// LOW muy breves dentro de un pulso valido. Solo damos el pulso por terminado
+// cuando D17 permanece LOW durante este tiempo; asi no se parte una orden de
+// 900 ms en varios pulsos pequenos. La separacion real de la ESP es 300 ms.
+constexpr unsigned long kFinPulsoEspEstableMs = 140UL;
+// Los caracteres del QR usan separaciones de 120 ms, por eso durante esa
+// fase aplicamos un filtro menor que no una dos caracteres consecutivos.
+constexpr unsigned long kFinPulsoQrEstableMs = 45UL;
 constexpr unsigned long kPulsoAnalizarMs = 300UL;
 constexpr unsigned long kPulsoDesconocidoMs = 600UL;
 constexpr unsigned long kPulsoPlasticoMs = 900UL;
@@ -185,7 +193,20 @@ unsigned long cerrarCompuertaEn = 0;
 Punto destinoPendienteCompuerta = Punto::Desconocido;
 bool pulsoEspActivo = false;
 unsigned long inicioPulsoEspEn = 0;
+bool finPulsoEspPendiente = false;
+unsigned long inicioFinPulsoEspEn = 0;
 unsigned long habilitarPulsosEspEn = 0;
+// Salida Mega D16 -> ESP GPIO13 sin bloqueos. Antes, un evento PRESENCIA
+// mantenia al Mega dentro de delay(3000) y durante ese tiempo podia perder
+// por completo la orden @P/@V que abre la compuerta.
+bool pulsoMegaSalidaActivo = false;
+unsigned long pulsoMegaSalidaTerminaEn = 0;
+unsigned long pulsoMegaSalidaDisponibleEn = 0;
+unsigned long pulsoMegaSalidaDuracion = 0;
+const __FlashStringHelper* pulsoMegaSalidaEtiqueta = nullptr;
+bool pulsoMegaSalidaPendiente = false;
+unsigned long pulsoMegaPendienteDuracion = 0;
+const __FlashStringHelper* pulsoMegaPendienteEtiqueta = nullptr;
 bool recibiendoCodigoQr = false;
 char codigoQrRecibido[kLongitudCodigoQr + 1] = {};
 uint8_t longitudCodigoQrRecibido = 0;
@@ -464,27 +485,70 @@ void actualizarCompuerta() {
   }
 }
 
-void enviarPulsoAEsp(unsigned long duracion,
-                     const __FlashStringHelper* etiqueta) {
+void iniciarPulsoAEsp(unsigned long duracion,
+                      const __FlashStringHelper* etiqueta) {
   // D16 queda normalmente HIGH. El divisor 1k/2k entrega ~3.3 V al GPIO13.
   // Un pulso LOW no puede sobrepasar el voltaje permitido por la ESP32.
   digitalWrite(kMegaTx2Pin, LOW);
-  delay(duracion);
-  digitalWrite(kMegaTx2Pin, HIGH);
-  delay(kSeparacionPulsoMegaMs);
+  pulsoMegaSalidaActivo = true;
+  pulsoMegaSalidaDuracion = duracion;
+  pulsoMegaSalidaEtiqueta = etiqueta;
+  pulsoMegaSalidaTerminaEn = millis() + duracion;
+}
 
-  Serial.print(F("RECI -> ESP: pulso "));
-  Serial.print(etiqueta);
-  Serial.print(F(" de "));
-  Serial.print(duracion);
-  Serial.println(F(" ms."));
+void enviarPulsoAEsp(unsigned long duracion,
+                     const __FlashStringHelper* etiqueta,
+                     bool prioridad) {
+  const unsigned long ahora = millis();
+  if (!pulsoMegaSalidaActivo && !pulsoMegaSalidaPendiente &&
+      static_cast<long>(ahora - pulsoMegaSalidaDisponibleEn) >= 0) {
+    iniciarPulsoAEsp(duracion, etiqueta);
+    return;
+  }
+
+  // Una confirmacion de compuerta puede reemplazar un evento informativo
+  // pendiente, porque la ESP la necesita para registrar el reciclaje.
+  if (!pulsoMegaSalidaPendiente || prioridad) {
+    pulsoMegaSalidaPendiente = true;
+    pulsoMegaPendienteDuracion = duracion;
+    pulsoMegaPendienteEtiqueta = etiqueta;
+    return;
+  }
+
+  Serial.println(F("RECI -> ESP: cola ocupada; pulso informativo omitido."));
+}
+
+void actualizarPulsoSalidaAEsp() {
+  const unsigned long ahora = millis();
+  if (pulsoMegaSalidaActivo &&
+      static_cast<long>(ahora - pulsoMegaSalidaTerminaEn) >= 0) {
+    digitalWrite(kMegaTx2Pin, HIGH);
+    pulsoMegaSalidaActivo = false;
+    pulsoMegaSalidaDisponibleEn = ahora + kSeparacionPulsoMegaMs;
+
+    Serial.print(F("RECI -> ESP: pulso "));
+    Serial.print(pulsoMegaSalidaEtiqueta);
+    Serial.print(F(" de "));
+    Serial.print(pulsoMegaSalidaDuracion);
+    Serial.println(F(" ms."));
+  }
+
+  if (pulsoMegaSalidaActivo || !pulsoMegaSalidaPendiente ||
+      static_cast<long>(ahora - pulsoMegaSalidaDisponibleEn) < 0) {
+    return;
+  }
+
+  const unsigned long duracion = pulsoMegaPendienteDuracion;
+  const __FlashStringHelper* etiqueta = pulsoMegaPendienteEtiqueta;
+  pulsoMegaSalidaPendiente = false;
+  iniciarPulsoAEsp(duracion, etiqueta);
 }
 
 void emitirLlegada(Punto punto) {
   if (punto == Punto::P1) {
-    enviarPulsoAEsp(kPulsoMegaLlegadaP1Ms, F("LLEGADA P1"));
+    enviarPulsoAEsp(kPulsoMegaLlegadaP1Ms, F("LLEGADA P1"), false);
   } else if (punto == Punto::P2) {
-    enviarPulsoAEsp(kPulsoMegaLlegadaP2Ms, F("LLEGADA P2"));
+    enviarPulsoAEsp(kPulsoMegaLlegadaP2Ms, F("LLEGADA P2"), false);
   }
   proximaPresenciaPermitidaEn = millis() + kEsperaPresenciaTrasLlegadaMs;
 }
@@ -506,7 +570,7 @@ void actualizarPresencia() {
 
   pirListoParaNuevoEvento = false;
   proximaPresenciaPermitidaEn = millis() + kEsperaPresenciaMs;
-  enviarPulsoAEsp(kPulsoMegaPresenciaMs, F("PRESENCIA"));
+  enviarPulsoAEsp(kPulsoMegaPresenciaMs, F("PRESENCIA"), false);
   informar(F("PRESENCIA: alguien se acerco"));
   if (!qrVisible) mostrarCara(CaraReci::Feliz);
   mostrarLcd("Hola, soy RECI", "Recicla aqui");
@@ -832,7 +896,7 @@ void procesarComando(char* entrada) {
   } else if (es(entrada, "PING")) {
     // Diagnóstico del regreso Mega -> ESP sin mover ni abrir nada.
     mostrarLcd("PULSO A ESP", "Enviando prueba");
-    enviarPulsoAEsp(kPulsoMegaPongMs, F("PONG"));
+    enviarPulsoAEsp(kPulsoMegaPongMs, F("PONG"), false);
   } else if (es(entrada, "VIDRIO") || es(entrada, "CMD:CLASSIFY:vidrio")) {
     abrirCompuerta(CompuertaActiva::Vidrio);
   } else if (es(entrada, "PLASTICO") || es(entrada, "CMD:CLASSIFY:plastico")) {
@@ -1019,13 +1083,13 @@ void procesarPulsoEsp(unsigned long duracion) {
     if (abrirCompuerta(CompuertaActiva::Plastico)) {
       delay(kRetrasoConfirmacionCompuertaMs);
       enviarPulsoAEsp(kPulsoMegaCompuertaConfirmadaMs,
-                      F("COMPUERTA PLASTICO CONFIRMADA"));
+                      F("COMPUERTA PLASTICO CONFIRMADA"), true);
     }
   } else if (coincidePulsoEsp(duracion, kPulsoVidrioMs)) {
     if (abrirCompuerta(CompuertaActiva::Vidrio)) {
       delay(kRetrasoConfirmacionCompuertaMs);
       enviarPulsoAEsp(kPulsoMegaCompuertaConfirmadaMs,
-                      F("COMPUERTA VIDRIO CONFIRMADA"));
+                      F("COMPUERTA VIDRIO CONFIRMADA"), true);
     }
   } else if (coincidePulsoEsp(duracion, kPulsoP1Ms)) {
     irAPunto(Punto::P1);
@@ -1069,20 +1133,40 @@ void actualizarPulsoEsp() {
   // apertura de compuerta.
   if (static_cast<long>(ahora - habilitarPulsosEspEn) < 0) {
     pulsoEspActivo = nivelAlto;
+    finPulsoEspPendiente = false;
     if (nivelAlto) inicioPulsoEspEn = ahora;
     return;
   }
 
   if (nivelAlto && !pulsoEspActivo) {
     pulsoEspActivo = true;
+    finPulsoEspPendiente = false;
     inicioPulsoEspEn = ahora;
     return;
   }
 
-  if (!nivelAlto && pulsoEspActivo) {
+  if (nivelAlto && pulsoEspActivo) {
+    // Si D17 vuelve a HIGH antes del filtro, fue ruido y el pulso original
+    // sigue activo desde su primer flanco.
+    finPulsoEspPendiente = false;
+    return;
+  }
+
+  if (!nivelAlto && pulsoEspActivo && !finPulsoEspPendiente) {
+    finPulsoEspPendiente = true;
+    inicioFinPulsoEspEn = ahora;
+    return;
+  }
+
+  const unsigned long finEstableMs = recibiendoCodigoQr
+      ? kFinPulsoQrEstableMs
+      : kFinPulsoEspEstableMs;
+  if (!nivelAlto && pulsoEspActivo && finPulsoEspPendiente &&
+      ahora - inicioFinPulsoEspEn >= finEstableMs) {
     pulsoEspActivo = false;
+    finPulsoEspPendiente = false;
     if (inicioPulsoEspEn < habilitarPulsosEspEn) return;
-    procesarPulsoEsp(ahora - inicioPulsoEspEn);
+    procesarPulsoEsp(inicioFinPulsoEspEn - inicioPulsoEspEn);
   }
 }
 
@@ -1200,6 +1284,7 @@ void setup() {
 
 void loop() {
   leerSerial(Serial, entradaUsb);  // Pruebas por USB / Monitor Serial.
+  actualizarPulsoSalidaAEsp();      // Mega D16 -> ESP GPIO13, sin bloquear.
   actualizarPulsoEsp();             // ESP GPIO14 -> Mega D17, sin UART.
   actualizarRecepcionCodigoQr();    // Completa o cancela un QR incompleto.
   actualizarRuta();
