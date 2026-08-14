@@ -1,4 +1,4 @@
-"""Compara MobileNetV2 y MobileNetV3-Large sobre las mismas capturas etiquetadas.
+"""Compara el MobileNetV2 activo y el respaldo MobileNetV3-Large.
 
 Las imágenes se esperan en ``<dataset>/plastico`` y ``<dataset>/vidrio``.
 No llama a OpenAI, no modifica el modelo activo ni abre compuertas: evalúa
@@ -172,13 +172,17 @@ def _write_results(output_dir: Path, rows: list[dict[str, Any]], arguments: argp
 
 def parse_args() -> argparse.Namespace:
     default_v2 = SERVICE_ROOT / "model" / "backups" / "mobilenetv2_run_20260721_2129"
+    default_v3 = (
+        SERVICE_ROOT / "model" / "backups"
+        / "mobilenetv3large_20260809_004420_split42_seed1"
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, required=True, help="Carpeta con plastico/ y vidrio/")
     parser.add_argument("--output-dir", type=Path, required=True, help="Carpeta nueva para CSV y resumen JSON")
     parser.add_argument("--v2-model", type=Path, default=default_v2 / "model.tflite")
     parser.add_argument("--v2-labels", type=Path, default=default_v2 / "labels.txt")
-    parser.add_argument("--v3-model", type=Path, default=SERVICE_ROOT / "model" / "model.tflite")
-    parser.add_argument("--v3-labels", type=Path, default=SERVICE_ROOT / "model" / "labels.txt")
+    parser.add_argument("--v3-model", type=Path, default=default_v3 / "model.tflite")
+    parser.add_argument("--v3-labels", type=Path, default=default_v3 / "labels.txt")
     return parser.parse_args()
 
 

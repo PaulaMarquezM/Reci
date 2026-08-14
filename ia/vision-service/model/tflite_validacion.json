@@ -1,9 +1,9 @@
 {
-  "bytes": 3486408,
-  "sha256": "b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503",
-  "cuantizacion_esperada": "int8",
+  "bytes": 8896164,
+  "sha256": "da71c12244076c1fe8f206a444f0c7fad9af467f813976acd40e027ae62f56b1",
+  "cuantizacion_esperada": "ninguna",
   "entrada": {
-    "dtype": "int8",
+    "dtype": "float32",
     "shape": [
       1,
       224,
@@ -11,39 +11,47 @@
       3
     ],
     "quantization": [
-      1.0,
-      -128
+      0,
+      0
     ]
   },
   "salida": {
-    "dtype": "int8",
+    "dtype": "float32",
     "shape": [
       1,
       2
     ],
     "quantization": [
-      0.00390625,
-      -128
+      0,
+      0
     ]
   },
-  "tipos_tensores": [
-    "int32",
-    "int8"
-  ],
-  "operaciones": [
-    "ADD",
-    "CONV_2D",
-    "DELEGATE",
-    "DEPTHWISE_CONV_2D",
-    "FULLY_CONNECTED",
-    "HARD_SWISH",
-    "MEAN",
-    "MUL",
-    "SOFTMAX"
-  ],
-  "latencia_ms": {
-    "p50": 19.636600016383454,
-    "p95": 22.766294979373924,
-    "n": 8
+  "evaluacion_operativa_ov3660_qvga": {
+    "total": 1000,
+    "exactitud": 0.716,
+    "macro_f1": 0.7125215102743192,
+    "matriz_confusion": [
+      [
+        303,
+        197
+      ],
+      [
+        87,
+        413
+      ]
+    ],
+    "latencia_ms": {
+      "p50": 14.5282,
+      "p95": 14.7146
+    }
+  },
+  "comparacion_mismo_pipeline": {
+    "mobilenetv3large_int8": {
+      "exactitud": 0.571,
+      "macro_f1": 0.5709034532769873,
+      "latencia_p50_ms": 5.1199
+    },
+    "desacuerdos": 461,
+    "decision": "MobileNetV2 float32 activo por mayor calidad; MobileNetV3-Large INT8 queda como respaldo."
   }
 }

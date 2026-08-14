@@ -1,10 +1,12 @@
 {
-  "run_id": "mobilenetv3large_20260809_004420_split42_seed1",
-  "arquitectura": "mobilenetv3large",
-  "descripcion": "MobileNetV3-Large (E3, candidato eficiente)",
-  "fecha": "2026-08-09T11:27:19",
-  "semilla_particion": 42,
-  "semilla_entrenamiento": 1,
+  "run_id": "run_20260721_2129",
+  "arquitectura": "mobilenetv2",
+  "descripcion": "MobileNetV2 TFLite float32 activo",
+  "seleccion_activa": {
+    "fecha": "2026-08-13",
+    "motivo": "Superó al MobileNetV3-Large INT8 en 1000 capturas OV3660/QVGA usando el pipeline de producción.",
+    "politica": "Tres fotos, dos fuentes por foto, mayoría conjunta; empate resuelto por OpenAI+sistema experto; con tres abstenciones del proveedor el modelo local requiere unanimidad 3/3."
+  },
   "clases": [
     "plastico",
     "vidrio"
@@ -12,71 +14,80 @@
   "entrada": {
     "alto": 224,
     "ancho": 224,
-    "rango": "RGB 0-255"
+    "rango": "RGB 0-255",
+    "dtype": "float32"
   },
-  "cuantizacion_solicitada": "int8",
-  "dataset": "C:\\Users\\axela\\Documents\\Universidad\\RECI_dataset_trabajo_v1",
-  "particion": "por sesión completa",
-  "stats_dataset": {
-    "entrenamiento": {
-      "plastico": 8765,
-      "vidrio": 8865
-    },
-    "validacion": {
-      "plastico": 100,
-      "vidrio": 99
-    },
-    "prueba": {
-      "plastico": 100,
-      "vidrio": 100
-    }
-  },
-  "class_weight": {
-    "0": 1.0057045065601826,
-    "1": 0.9943598420755781
-  },
-  "metricas_validacion": {
-    "matriz_confusion": [
-      [
-        94,
-        6
-      ],
-      [
-        5,
-        94
-      ]
+  "salida": {
+    "shape": [
+      1,
+      2
     ],
-    "metricas_por_clase": {
-      "plastico": {
-        "precision": 0.9494949494949495,
-        "recall": 0.94,
-        "f1": 0.9447236180904524,
-        "soporte": 100
+    "dtype": "float32"
+  },
+  "cuantizacion": "ninguna",
+  "entrenamiento_historico": {
+    "accuracy": 0.9842909574508667,
+    "loss": 0.06684873253107071,
+    "best_val_fase1": 0.9012265801429749,
+    "best_val_fase2": 0.9842909574508667,
+    "stats_dataset": {
+      "train": {
+        "plastico": 13258,
+        "vidrio": 13043
       },
-      "vidrio": {
-        "precision": 0.94,
-        "recall": 0.9494949494949495,
-        "f1": 0.9447236180904524,
-        "soporte": 99
+      "val": {
+        "plastico": 2343,
+        "vidrio": 2304
       }
     },
-    "macro_f1": 0.9447236180904524,
-    "exactitud_balanceada": 0.9447474747474747,
-    "exactitud": 0.9447236180904522,
-    "errores_confianza_alta": 1,
-    "total": 199,
-    "val_loss": 0.15045064687728882,
-    "val_accuracy": 0.9447236061096191
+    "confusion_matrix": [
+      [
+        2299,
+        44
+      ],
+      [
+        29,
+        2275
+      ]
+    ],
+    "advertencia": "Métrica histórica del entrenamiento; no sustituye la evaluación operativa con OV3660/QVGA."
   },
-  "metricas_prueba": null,
-  "mejor_epoca": 22,
-  "mejor_val_macro_f1": 0.9447236180904524,
+  "evaluacion_operativa_ov3660_qvga": {
+    "total": 1000,
+    "plastico": 500,
+    "vidrio": 500,
+    "correctas": 716,
+    "exactitud": 0.716,
+    "macro_f1": 0.7125215102743192,
+    "matriz_confusion": [
+      [
+        303,
+        197
+      ],
+      [
+        87,
+        413
+      ]
+    ],
+    "recall": {
+      "plastico": 0.606,
+      "vidrio": 0.826
+    },
+    "tripletas_de_tres_fotos": {
+      "total": 330,
+      "mayoria_correcta": 248,
+      "exactitud": 0.7515,
+      "unanimes": 178,
+      "unanimes_correctas": 154,
+      "precision_unanimidad": 0.8652
+    },
+    "nota": "Conjunto útil para comparación operativa; puede solaparse con datos de desarrollo y no se declara prueba reservada."
+  },
   "tflite": {
-    "bytes": 3486408,
-    "sha256": "b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503",
-    "cuantizacion_esperada": "int8",
+    "bytes": 8896164,
+    "sha256": "da71c12244076c1fe8f206a444f0c7fad9af467f813976acd40e027ae62f56b1",
     "entrada": {
-      "dtype": "int8",
+      "dtype": "float32",
       "shape": [
         1,
         224,
@@ -84,59 +95,32 @@
         3
       ],
       "quantization": [
-        1.0,
-        -128
+        0,
+        0
       ]
     },
     "salida": {
-      "dtype": "int8",
+      "dtype": "float32",
       "shape": [
         1,
         2
       ],
       "quantization": [
-        0.00390625,
-        -128
+        0,
+        0
       ]
     },
-    "tipos_tensores": [
-      "int32",
-      "int8"
-    ],
-    "operaciones": [
-      "ADD",
-      "CONV_2D",
-      "DELEGATE",
-      "DEPTHWISE_CONV_2D",
-      "FULLY_CONNECTED",
-      "HARD_SWISH",
-      "MEAN",
-      "MUL",
-      "SOFTMAX"
-    ],
     "latencia_ms": {
-      "p50": 19.636600016383454,
-      "p95": 22.766294979373924,
-      "n": 8
+      "p50": 14.5282,
+      "p95": 14.7146,
+      "n": 1000
     }
   },
-  "tflite_bytes": 3486408,
-  "tflite_sha256": "b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503",
-  "artefactos": {
-    "model.keras": {
-      "nombre": "model.keras",
-      "bytes": 32466612,
-      "sha256": "a53a249cc90576e3fc5ce3578378ce271b8b784b29b15644874f61d78a306956"
-    },
-    "model.tflite": {
-      "nombre": "model.tflite",
-      "bytes": 3486408,
-      "sha256": "b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503"
-    },
-    "split_manifest.json": {
-      "nombre": "split_manifest.json",
-      "bytes": 1278,
-      "sha256": "b5abdb8c85d950acb17662e6c622979eb7f311e16ffc4fcb354ba129c5199df8"
-    }
+  "respaldo_anterior": {
+    "arquitectura": "mobilenetv3large",
+    "run_id": "mobilenetv3large_20260809_004420_split42_seed1",
+    "ruta": "backups/mobilenetv3large_20260809_004420_split42_seed1/model.tflite",
+    "sha256": "b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503",
+    "estado": "respaldo_sin_voto"
   }
 }

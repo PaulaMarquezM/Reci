@@ -2,48 +2,54 @@
 
 ## Modelo activo
 
-El servicio usa actualmente **MobileNetV3-Large** de la corrida
-`mobilenetv3large_20260809_004420_split42_seed1`. Fue el ganador del
-experimento comparativo de tres arquitecturas, seleccionado por macro-F1 media
-de validación.
+El servicio usa actualmente **MobileNetV2 TFLite float32** de la corrida
+`run_20260721_2129`. El 13 de agosto de 2026 reemplazó como modelo activo al
+MobileNetV3-Large INT8 después de comparar ambos artefactos con el mismo
+pipeline de producción sobre 1.000 capturas OV3660/QVGA.
 
-- `model.tflite`: artefacto TFLite binario activo (`int8`).
+- `model.tflite`: artefacto TFLite binario activo (`float32`).
 - `labels.txt`: orden de salida: `plastico`, `vidrio`.
 - `entrenamiento_manifest.json`: procedencia, partición, métricas y hash del
   artefacto activo.
 - `tflite_validacion.json`: comprobación del TFLite exportado.
 
-En su corrida ganadora obtuvo 188/199 aciertos de validación con capturas
-reales de ESP32-CAM: **macro-F1 94.47 %**, exactitud 94.47 % y matriz de
-confusión `[[94, 6], [5, 94]]` (filas reales plástico/vidrio). En las tres
-semillas, MobileNetV3-Large obtuvo macro-F1 media **93.63 % ± 0.77**, superior
-a MobileNetV2 (90.28 % ± 1.05) y EfficientNetB0 (87.75 % ± 0.58). El detalle
-reproducible está en
-[`docs/resultados-vision/2026-08-09`](../../../docs/resultados-vision/2026-08-09/).
+En la comparación operativa, MobileNetV2 obtuvo **716/1.000 (71,60 %)** y
+macro-F1 **71,25 %**; MobileNetV3-Large INT8 obtuvo **571/1.000 (57,10 %)** y
+macro-F1 **57,09 %**. Al agrupar capturas consecutivas por tripletas, la
+mayoría de MobileNetV2 acertó 248/330 (**75,15 %**) frente a 195/330
+(**59,09 %**) de V3. Este conjunto sirve para comparar compatibilidad con la
+cámara, pero puede solaparse con datos de desarrollo y no se presenta como
+prueba reservada.
+
+El V2 conserva además una métrica histórica de validación de 98,43 %. Esa
+métrica pertenece a su entrenamiento original y se mantiene separada de la
+evaluación operativa para no inflar el resultado desplegado.
 
 El hash SHA-256 esperado del artefacto activo es
-`b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503`.
+`da71c12244076c1fe8f206a444f0c7fad9af467f813976acd40e027ae62f56b1`.
 
-El modelo emite uno de los tres votos locales: la cámara toma tres fotos y el
-servicio conserva la política mixta existente (mayoría estricta del
-proveedor/OpenAI+sistema experto; si no existe, mayoría estricta del modelo
-local). El modelo local solo distingue `plastico` y `vidrio`; la decisión final
-`desconocido` no abre ninguna compuerta.
+El modelo emite tres de los seis votos: por cada una de las tres fotos también
+vota OpenAI+sistema experto. Los seis diagnósticos se cuentan juntos,
+`desconocido` se abstiene y gana la clase con más votos. Un empate se resuelve
+con la preferencia de los votos válidos del proveedor. El modelo local solo
+distingue `plastico` y `vidrio`; una confusión sin resolver produce
+`desconocido` y no abre ninguna compuerta.
 
 ## Compatibilidad TFLite
 
 El preprocesamiento está integrado en el artefacto: recibe RGB crudo de 0 a
-255. `vision/local_model.py` aplica además la escala y el punto cero declarados
-por TFLite, por lo que funciona tanto con modelos `float32` históricos como
-con el modelo activo `int8`. No se deben enviar directamente valores `uint8` a
-un modelo cuantizado sin esa conversión.
+255. El V2 activo tiene entrada y salida `float32`. `vision/local_model.py`
+conserva además soporte para escala y punto cero, por lo que un candidato
+`int8` puede evaluarse en modo sombra sin alterar el flujo activo.
 
-## Respaldo del modelo anterior
+## Respaldos auditados
 
-El MobileNetV2 que estaba activo antes del cambio se conserva íntegro en
-`backups/mobilenetv2_run_20260721_2129/`, junto con sus etiquetas y manifiesto.
-Su SHA-256 es
-`da71c12244076c1fe8f206a444f0c7fad9af467f813976acd40e027ae62f56b1`.
+- La copia de procedencia del V2 activo permanece en
+  `backups/mobilenetv2_run_20260721_2129/`.
+- MobileNetV3-Large INT8 se conserva íntegro en
+  `backups/mobilenetv3large_20260809_004420_split42_seed1/`, sin participar en
+  `vision_votes`. Su SHA-256 es
+  `b9f7ff5660c0b168776da187ee5b65d2a0682cf771ae9e61cf5c58b2b1f4f503`.
 
 ## Entrenar un candidato
 
