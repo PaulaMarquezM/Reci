@@ -99,6 +99,10 @@ constexpr size_t kComandoMax = 64;
 // y mensajes de "comando inválido". Se activa al integrar la ESP32-CAM.
 // Activado: la ESP32-CAM ya está conectada a RX2/TX2 con divisor de nivel.
 constexpr bool kEsp32CamConectada = true;
+// Durante la primera prueba solo se conecta ESP32 GPIO14/TX -> Mega D17/RX2.
+// No habilitar eventos Mega -> ESP32 hasta conectar D16/TX2 a GPIO13/RX con
+// el divisor resistivo obligatorio de 5 V a 3,3 V.
+constexpr bool kEsp32CamBidireccional = false;
 
 enum class Punto : uint8_t { Desconocido, Base, P1, P2 };
 enum class Modo : uint8_t { Detenido, ManualAdelante, ManualAtras, ManualIzquierda,
@@ -349,6 +353,7 @@ void actualizarCompuerta() {
 // Serial se mantienen separados de estos eventos para que la app no tenga
 // que adivinar cuándo RECI arrancó, llegó o encontró un obstáculo.
 void emitirEvento(const __FlashStringHelper* tipo, Punto punto) {
+  if (!kEsp32CamBidireccional) return;
   Serial2.print(F("EVENT:"));
   Serial2.print(tipo);
   Serial2.print(':');
@@ -356,6 +361,7 @@ void emitirEvento(const __FlashStringHelper* tipo, Punto punto) {
 }
 
 void emitirObstaculo() {
+  if (!kEsp32CamBidireccional) return;
   Serial2.println(F("EVENT:OBSTACLE"));
 }
 
@@ -365,7 +371,7 @@ void actualizarPresencia() {
   if (digitalRead(kPirPin) != HIGH) return;
 
   proximaPresenciaPermitidaEn = millis() + kEsperaPresenciaMs;
-  Serial2.println(F("EVENT:PRESENCE"));
+  if (kEsp32CamBidireccional) Serial2.println(F("EVENT:PRESENCE"));
   informar(F("PRESENCIA: alguien se acerco"));
   if (!qrVisible) mostrarCara(CaraReci::Feliz);
   mostrarLcd("Hola, soy RECI", "Recicla aqui");
@@ -690,6 +696,8 @@ void leerSerial(Stream& puerto) {
     if (caracter == '\n') {
       if (longitudComando > 0) {
         comando[longitudComando] = '\0';
+        Serial.print(F("RX <- "));
+        Serial.println(comando);
         procesarComando(comando);
         longitudComando = 0;
       }
