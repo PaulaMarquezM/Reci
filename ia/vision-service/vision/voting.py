@@ -72,6 +72,13 @@ def _is_complete(votes: list[dict[str, Any]], *, source: str) -> bool:
         if not isinstance(vote, dict) or vote.get("complete", True) is False:
             return False
         material = str(vote.get("material", "desconocido"))
+        counts_as_vote = vote.get("counts_as_vote", material in MATERIALS)
+        if material in MATERIALS and counts_as_vote is not True:
+            return False
+        if material not in MATERIALS and (
+            material != "desconocido" or counts_as_vote is not False
+        ):
+            return False
         if source == "modelo_local" and material not in MATERIALS:
             return False
     return True

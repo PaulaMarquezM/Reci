@@ -1,4 +1,8 @@
-"""Pruebas de los votos sin fusión entre proveedor y modelo local."""
+"""Pruebas de los seis votos y su paridad con el firmware."""
+
+from itertools import product
+from pathlib import Path
+import subprocess
 
 from vision.voting import build_photo_votes, decide_material
 
@@ -101,3 +105,59 @@ def test_captura_ausente_o_respuesta_incompleta_rechaza():
                              _votes(["plastico", "plastico", "plastico"]))
 
     assert result == {"material": "desconocido", "source": "respuesta_incompleta"}
+
+
+def _firmware_driver(tmp_path: Path) -> Path:
+    source = Path(__file__).with_name("firmware_voting_driver.cpp")
+    binary = tmp_path / "firmware_voting_driver"
+    subprocess.run(
+        ["c++", "-std=c++17", str(source), "-o", str(binary)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return binary
+
+
+def test_python_y_firmware_coinciden_en_las_216_combinaciones(tmp_path: Path):
+    cases: list[tuple[list[str], list[str]]] = [
+        (list(provider), list(local))
+        for provider in product(("plastico", "vidrio", "desconocido"), repeat=3)
+        for local in product(("plastico", "vidrio"), repeat=3)
+    ]
+    driver_input = "".join(
+        f"{provider.count('plastico')} {provider.count('vidrio')} "
+        f"{provider.count('desconocido')} {local.count('plastico')} "
+        f"{local.count('vidrio')} 0 1\n"
+        for provider, local in cases
+    )
+    completed = subprocess.run(
+        [str(_firmware_driver(tmp_path))],
+        input=driver_input,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    firmware_results = completed.stdout.splitlines()
+
+    assert len(firmware_results) == len(cases) == 216
+    for (provider, local), firmware_result in zip(cases, firmware_results):
+        python_result = decide_material(_votes(provider), _votes(local))
+        command = "NO_CMD" if python_result["material"] == "desconocido" else "CMD"
+        assert firmware_result == (
+            f"{python_result['material']}|{python_result['source']}|{command}"
+        )
+
+
+def test_votos_malformados_o_local_desconocido_rechazan():
+    malformed_provider = _votes(["plastico", "vidrio", "desconocido"])
+    malformed_provider[0]["counts_as_vote"] = False
+
+    assert decide_material(malformed_provider, _votes(["plastico"] * 3)) == {
+        "material": "desconocido",
+        "source": "respuesta_incompleta",
+    }
+    assert decide_material(
+        _votes(["plastico"] * 3),
+        _votes(["plastico", "vidrio", "desconocido"]),
+    ) == {"material": "desconocido", "source": "respuesta_incompleta"}

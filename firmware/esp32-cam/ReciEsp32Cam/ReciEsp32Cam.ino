@@ -17,6 +17,7 @@
 #include "ReciEsp32CamSecrets.h"
 #include "ReciHttpClient.h"
 #include "RobotCallDispatcher.h"
+#include "VisionVotingPolicy.h"
 
 namespace {
 
@@ -62,11 +63,6 @@ struct MaterialVotes {
   uint8_t abstenciones = 0;
   float plasticoConfidence = 0;
   float vidrioConfidence = 0;
-};
-
-struct FinalDecision {
-  String material = "desconocido";
-  String source = "respuesta_incompleta";
 };
 
 class MultipartCameraStream final : public Stream {
@@ -236,38 +232,14 @@ void addVote(MaterialVotes& votes, const String& material, float confidence) {
   }
 }
 
-FinalDecision decideMaterial(const MaterialVotes& providerVotes,
-                             const MaterialVotes& localVotes,
-                             bool capturesComplete) {
-  if (!capturesComplete) return {"desconocido", "respuesta_incompleta"};
-
-  const uint8_t providerValidVotes = providerVotes.plastico + providerVotes.vidrio;
-  if (providerValidVotes == 0) {
-    if (localVotes.plastico == kCaptureCount) {
-      return {"plastico", "modelo_local_unanime"};
-    }
-    if (localVotes.vidrio == kCaptureCount) {
-      return {"vidrio", "modelo_local_unanime"};
-    }
-    return {"desconocido", "modelo_local_no_unanime"};
-  }
-
-  const uint8_t totalPlastic = providerVotes.plastico + localVotes.plastico;
-  const uint8_t totalGlass = providerVotes.vidrio + localVotes.vidrio;
-  if (totalPlastic > totalGlass) {
-    return {"plastico", "votacion_conjunta"};
-  }
-  if (totalGlass > totalPlastic) {
-    return {"vidrio", "votacion_conjunta"};
-  }
-
-  if (providerVotes.plastico > providerVotes.vidrio) {
-    return {"plastico", "desempate_openai_sistema_experto"};
-  }
-  if (providerVotes.vidrio > providerVotes.plastico) {
-    return {"vidrio", "desempate_openai_sistema_experto"};
-  }
-  return {"desconocido", "confusion_sin_resolver"};
+reci_vision::Decision decideMaterial(const MaterialVotes& providerVotes,
+                                     const MaterialVotes& localVotes,
+                                     bool capturesComplete) {
+  const reci_vision::VoteCounts provider{
+      providerVotes.plastico, providerVotes.vidrio, providerVotes.abstenciones};
+  const reci_vision::VoteCounts local{
+      localVotes.plastico, localVotes.vidrio, localVotes.abstenciones};
+  return reci_vision::decide(provider, local, capturesComplete, kCaptureCount);
 }
 
 // Registra el resultado final (ya votado) en recycle_events — las 3 fotos
@@ -435,10 +407,13 @@ void classifyResidue() {
                 providerVotes.plastico + localVotes.plastico,
                 providerVotes.vidrio + localVotes.vidrio);
 
-  const FinalDecision decision = decideMaterial(providerVotes, localVotes, capturesComplete);
-  if (decision.material == "desconocido") {
+  const reci_vision::Decision decision =
+      decideMaterial(providerVotes, localVotes, capturesComplete);
+  const char* decisionMaterial = reci_vision::materialName(decision.material);
+  const char* decisionSource = reci_vision::sourceName(decision.source);
+  if (!reci_vision::shouldSendClassify(decision)) {
     Serial.print(F("Resultado: DESCONOCIDO ("));
-    Serial.print(decision.source);
+    Serial.print(decisionSource);
     Serial.println(')');
     sendMega("CMD:FACE:confused");
     showOnLcd("No estoy seguro", "Intenta de nuevo");
@@ -446,19 +421,19 @@ void classifyResidue() {
   }
 
   Serial.print(F("Resultado final: "));
-  Serial.println(decision.material);
+  Serial.println(decisionMaterial);
   Serial.print(F("Regla de decision: "));
-  Serial.println(decision.source);
+  Serial.println(decisionSource);
 
-  const bool providerTieBreak = decision.source == "desempate_openai_sistema_experto";
-  const uint8_t winningCount = decision.material == "plastico"
+  const bool providerTieBreak = reci_vision::usesProviderTieBreak(decision);
+  const uint8_t winningCount = decision.material == reci_vision::Material::Plastico
       ? (providerTieBreak
           ? providerVotes.plastico
           : providerVotes.plastico + localVotes.plastico)
       : (providerTieBreak
           ? providerVotes.vidrio
           : providerVotes.vidrio + localVotes.vidrio);
-  const float winningConfidenceSum = decision.material == "plastico"
+  const float winningConfidenceSum = decision.material == reci_vision::Material::Plastico
       ? (providerTieBreak
           ? providerVotes.plasticoConfidence
           : providerVotes.plasticoConfidence + localVotes.plasticoConfidence)
@@ -468,18 +443,18 @@ void classifyResidue() {
   const float winningConfidence = winningCount > 0
       ? winningConfidenceSum / winningCount
       : 0.0F;
-  const String claimCode = recordRecycleEvent(decision.material, winningConfidence);
+  const String claimCode = recordRecycleEvent(decisionMaterial, winningConfidence);
 
-  sendMega("CMD:CLASSIFY:" + decision.material);
+  sendMega(String("CMD:CLASSIFY:") + decisionMaterial);
   sendMega("CMD:FACE:happy");
 
   if (claimCode.length() > 0) {
     sendMega("CMD:QR:" + claimCode);
-    showOnLcd(decision.material == "vidrio" ? "VIDRIO" : "PLASTICO", "Escanea el QR");
+    showOnLcd(decision.material == reci_vision::Material::Vidrio ? "VIDRIO" : "PLASTICO", "Escanea el QR");
   } else if (lastRecycleLinkedToCall) {
-    showOnLcd(decision.material == "vidrio" ? "VIDRIO" : "PLASTICO", "10 pts agregados");
+    showOnLcd(decision.material == reci_vision::Material::Vidrio ? "VIDRIO" : "PLASTICO", "10 pts agregados");
   } else {
-    showOnLcd(decision.material == "vidrio" ? "VIDRIO" : "PLASTICO", "Compuerta abierta");
+    showOnLcd(decision.material == reci_vision::Material::Vidrio ? "VIDRIO" : "PLASTICO", "Compuerta abierta");
   }
 }
 
