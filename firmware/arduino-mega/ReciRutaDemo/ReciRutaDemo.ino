@@ -52,6 +52,12 @@ Servo servoPlastico;
 
 // OLED SSD1306 128x64 por I2C: Mega SDA=20, SCL=21.
 constexpr uint8_t kDireccionOled = 0x3C;
+// El firmware completo atiende interrupciones de servos y UART; 25 ms evita
+// falsos timeouts sin permitir que un bus I2C averiado congele el robot.
+constexpr unsigned long kI2cTimeoutUs = 25000UL;
+// El escaner y los dos modulos responden de forma estable a la velocidad
+// I2C estandar. El bus compartido no es fiable a 400 kHz con este cableado.
+constexpr unsigned long kI2cClockHz = 100000UL;
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 bool oledDisponible = false;
 
@@ -80,7 +86,12 @@ constexpr unsigned long kFrenteLibreAntesDeReanudarMs = 1000UL;
 // Solo genera un evento de presencia cuando el robot está detenido; nunca
 // inicia un movimiento ni concede puntos por sí solo.
 constexpr uint8_t kPirPin = 28;
+constexpr unsigned long kPirWarmupMs = 30000UL;
 constexpr unsigned long kEsperaPresenciaMs = 10000UL;
+// Tras confirmar la llegada, la ESP actualiza la llamada, la posición y el
+// saludo. Esperamos antes de emitir PRESENCIA para que esos HTTP/pulsos no se
+// solapen con el inicio automático de la cámara.
+constexpr unsigned long kEsperaPresenciaTrasLlegadaMs = 6000UL;
 
 // CALIBRACION: reemplaza 0 por el tiempo medido en milisegundos.
 // Mide cada tramo tres veces y usa el promedio. Los dos tramos son rectos,
@@ -88,24 +99,79 @@ constexpr unsigned long kEsperaPresenciaMs = 10000UL;
 constexpr unsigned long kBaseAP1Ms = 8000UL;
 constexpr unsigned long kP1AP2Ms = 8000UL;
 
-constexpr unsigned long kSerialBaud = 9600UL;
+// El Monitor Serial USB se mantiene en 9600 para las pruebas manuales.
+constexpr unsigned long kUsbSerialBaud = 9600UL;
+// El regreso Mega -> ESP usa pulsos LOW por D16 hacia GPIO13. Es el mismo
+// cable con divisor que antes llevaba UART, pero los pulsos son mucho más
+// tolerantes al cableado largo y al ruido eléctrico del robot.
+constexpr unsigned long kPulsoMegaLlegadaP1Ms = 1800UL;
+constexpr unsigned long kPulsoMegaLlegadaP2Ms = 2400UL;
+constexpr unsigned long kPulsoMegaPresenciaMs = 3000UL;
+constexpr unsigned long kPulsoMegaPongMs = 3600UL;
+// Confirmación corta de que el Mega aceptó la orden y escribió el ángulo del
+// servo. La ESP espera esta confirmación antes de registrar puntos.
+constexpr unsigned long kPulsoMegaCompuertaConfirmadaMs = 800UL;
+// La ESP mantiene 300 ms de separación después de enviar @P/@V. Retrasar la
+// confirmación garantiza que ya esté escuchando cuando empiece el pulso.
+constexpr unsigned long kRetrasoConfirmacionCompuertaMs = 400UL;
+constexpr unsigned long kSeparacionPulsoMegaMs = 200UL;
+// Diagnóstico sin multímetro: conecta un jumper desde el mismo cable
+// ESP GPIO14 -> Mega D17 hacia A8. A8 es solo entrada, por lo que no altera
+// la comunicación ni entrega voltaje a la ESP32-CAM.
+constexpr uint8_t kEspTxSensePin = A8;
+// Para comparar contra la alimentación real de la ESP, conecta también
+// ESP 3V3 -> Mega A9. A9 es únicamente entrada.
+constexpr uint8_t kEsp3v3SensePin = A9;
+constexpr uint8_t kMegaTx2Pin = 16;
+// ESP GPIO14 llega directo a D17. En lugar de decodificarlo como UART, el
+// Mega mide pulsos HIGH de varios cientos de milisegundos. Así una trama
+// corrupta no puede convertirse en una orden del robot.
+constexpr uint8_t kPulsoEspPin = 17;
+constexpr unsigned long kIgnorarPulsosAlArrancarMs = 3500UL;
+constexpr unsigned long kToleranciaPulsoMs = 120UL;
+constexpr unsigned long kPulsoAnalizarMs = 300UL;
+constexpr unsigned long kPulsoDesconocidoMs = 600UL;
+constexpr unsigned long kPulsoPlasticoMs = 900UL;
+constexpr unsigned long kPulsoVidrioMs = 1200UL;
+constexpr unsigned long kPulsoP1Ms = 1500UL;
+constexpr unsigned long kPulsoP2Ms = 1800UL;
+constexpr unsigned long kPulsoSaludoMs = 2100UL;
+constexpr unsigned long kPulsoBotellaMs = 2400UL;
+constexpr unsigned long kPulsoListoMs = 2700UL;
+constexpr unsigned long kPulsoErrorMs = 3000UL;
+constexpr unsigned long kPulsoPuntosDirectosMs = 3300UL;
+constexpr unsigned long kPulsoPuntosAppMs = 3600UL;
+constexpr unsigned long kPulsoGraciasMs = 3900UL;
+constexpr unsigned long kPulsoPruebaMs = 4200UL;
+// Transporte del claim_code real hacia la OLED. El primer pulso abre una
+// recepción de ocho caracteres; los ocho siguientes codifican 0-9 y A-Z por
+// duración. Solo se interpreta esta familia mientras la recepción QR está
+// activa, así nunca se convierte en órdenes de ruta o compuerta.
+constexpr unsigned long kPulsoQrInicioMs = 4500UL;
+constexpr unsigned long kPulsoQrCaracterBaseMs = 180UL;
+constexpr unsigned long kPulsoQrCaracterPasoMs = 60UL;
+constexpr unsigned long kToleranciaQrCaracterMs = 25UL;
+constexpr unsigned long kTimeoutRecepcionQrMs = 3000UL;
+constexpr char kAlfabetoCodigoQr[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+constexpr uint8_t kLongitudCodigoQr = 8;
+constexpr uint8_t kEspTxSenseSamples = 32;
+constexpr uint16_t kAdcFullScale = 1023U;
 // Los mensajes de la ESP32 incluyen, por ejemplo,
 // "CMD:LCD:Hola, Pau|Soy RECI". Deja espacio suficiente para el saludo
 // sin alterar los comandos cortos de movimiento.
 constexpr size_t kComandoMax = 64;
-
-// Por ahora las órdenes llegan solo desde el Monitor Serial por USB.
-// Dejar RX2 flotando sin una ESP32-CAM conectada puede crear caracteres basura
-// y mensajes de "comando inválido". Se activa al integrar la ESP32-CAM.
-// Activado: la ESP32-CAM ya está conectada a RX2/TX2 con divisor de nivel.
-constexpr bool kEsp32CamConectada = true;
 
 enum class Punto : uint8_t { Desconocido, Base, P1, P2 };
 enum class Modo : uint8_t { Detenido, ManualAdelante, ManualAtras, ManualIzquierda,
                             ManualDerecha, EnRuta, Emergencia };
 enum class CompuertaActiva : uint8_t { Ninguna, Vidrio, Plastico };
 
-Punto puntoActual = Punto::Desconocido;
+// La demostración se enciende con RECI físicamente colocado en BASE. Guardar
+// ese estado desde el arranque permite que una llamada de la app salga sola,
+// sin requerir escribir SET:BASE en el Monitor Serial. No mueve motores.
+// Si alguna vez se enciende fuera de BASE, confirma la posición real con
+// SET:P1 o SET:P2 antes de aceptar una llamada.
+Punto puntoActual = Punto::Base;
 Punto destino = Punto::Desconocido;
 Modo modo = Modo::Detenido;
 unsigned long terminaTramoEn = 0;
@@ -113,15 +179,54 @@ unsigned long ultimoChequeoObstaculo = 0;
 unsigned long tiempoRestantePausaMs = 0;
 unsigned long frenteLibreDesde = 0;
 unsigned long proximaPresenciaPermitidaEn = 0;
+bool pirListoParaNuevoEvento = false;
 CompuertaActiva compuertaActiva = CompuertaActiva::Ninguna;
 unsigned long cerrarCompuertaEn = 0;
 Punto destinoPendienteCompuerta = Punto::Desconocido;
-char comando[kComandoMax + 1] = {};
-size_t longitudComando = 0;
+bool pulsoEspActivo = false;
+unsigned long inicioPulsoEspEn = 0;
+unsigned long habilitarPulsosEspEn = 0;
+bool recibiendoCodigoQr = false;
+char codigoQrRecibido[kLongitudCodigoQr + 1] = {};
+uint8_t longitudCodigoQrRecibido = 0;
+unsigned long ultimoCaracterQrEn = 0;
+
+struct EntradaSerial {
+  char comando[kComandoMax + 1] = {};
+  size_t longitud = 0;
+  // Si una trama llega dañada o supera el límite, se ignora hasta el salto
+  // de línea. Así sus bytes restantes no se interpretan como comandos nuevos.
+  bool descartarHastaNuevaLinea = false;
+};
+
+// El USB conserva un buffer de texto para las pruebas manuales.
+EntradaSerial entradaUsb;
 
 bool i2cResponde(uint8_t direccion) {
+  Wire.clearWireTimeoutFlag();
   Wire.beginTransmission(direccion);
-  return Wire.endTransmission() == 0;
+  const uint8_t estado = Wire.endTransmission();
+  const bool expiro = Wire.getWireTimeoutFlag();
+  Serial.print(F("DIAG I2C 0x"));
+  if (direccion < 0x10) Serial.print('0');
+  Serial.print(direccion, HEX);
+  Serial.print(F(": estado="));
+  Serial.print(estado);
+  Serial.print(F(", timeout="));
+  Serial.println(expiro ? F("si") : F("no"));
+  Wire.clearWireTimeoutFlag();
+  return !expiro && estado == 0;
+}
+
+void diagnosticarLineasI2c(const __FlashStringHelper* etapa) {
+  Serial.print(F("DIAG LINEAS "));
+  Serial.print(etapa);
+  Serial.print(F(": SDA="));
+  Serial.print(digitalRead(SDA));
+  Serial.print(F(", SCL="));
+  Serial.print(digitalRead(SCL));
+  Serial.print(F(", IRQ="));
+  Serial.println((SREG & _BV(SREG_I)) != 0 ? F("on") : F("off"));
 }
 
 void mostrarLcd(const char* linea1, const char* linea2) {
@@ -147,6 +252,8 @@ void informar(const __FlashStringHelper* texto);
 
 // La carita se dibuja solo cuando cambia el estado; así no frena la lectura
 // del ultrasónico ni el recorrido por estar redibujando constantemente.
+// Se usan líneas y formas compactas, no arcos superpuestos: en esta OLED los
+// tres arcos anteriores parecían rayas cuando se veía desde lejos.
 void mostrarCara(CaraReci cara) {
   if (!oledDisponible || cara == caraActual) return;
 
@@ -156,33 +263,44 @@ void mostrarCara(CaraReci cara) {
   oled.setTextColor(SSD1306_WHITE);
 
   if (cara == CaraReci::Movimiento) {
-    // Ojos concentrados mientras RECI avanza.
-    oled.fillRoundRect(30, 16, 18, 14, 6, SSD1306_WHITE);
-    oled.fillRoundRect(80, 16, 18, 14, 6, SSD1306_WHITE);
-    oled.drawCircleHelper(64, 42, 11, 0x0C, SSD1306_WHITE);
-    oled.drawCircleHelper(64, 41, 10, 0x0C, SSD1306_WHITE);
+    // Mira hacia delante mientras avanza.
+    oled.fillRoundRect(27, 15, 25, 18, 7, SSD1306_WHITE);
+    oled.fillRoundRect(76, 15, 25, 18, 7, SSD1306_WHITE);
+    oled.fillCircle(44, 24, 4, SSD1306_BLACK);
+    oled.fillCircle(93, 24, 4, SSD1306_BLACK);
+    oled.drawLine(51, 48, 77, 48, SSD1306_WHITE);
+    oled.drawLine(51, 49, 77, 49, SSD1306_WHITE);
   } else if (cara == CaraReci::Feliz) {
-    // Ojos ^ ^ y sonrisa grande: llegó o detectó a una persona.
+    // Ojos ^ ^ y una sonrisa limpia: llegó o detectó a una persona.
     oled.drawLine(30, 29, 39, 20, SSD1306_WHITE);
     oled.drawLine(39, 20, 48, 29, SSD1306_WHITE);
     oled.drawLine(80, 29, 89, 20, SSD1306_WHITE);
     oled.drawLine(89, 20, 98, 29, SSD1306_WHITE);
-    for (uint8_t grosor = 0; grosor < 3; grosor++) {
-      oled.drawCircleHelper(64, 38, 18 - grosor, 0x0C, SSD1306_WHITE);
-    }
+    oled.drawLine(47, 43, 55, 51, SSD1306_WHITE);
+    oled.drawLine(55, 51, 73, 51, SSD1306_WHITE);
+    oled.drawLine(73, 51, 81, 43, SSD1306_WHITE);
+    oled.drawLine(47, 44, 55, 52, SSD1306_WHITE);
+    oled.drawLine(55, 52, 73, 52, SSD1306_WHITE);
+    oled.drawLine(73, 52, 81, 44, SSD1306_WHITE);
   } else if (cara == CaraReci::Alerta) {
     // Ojos redondos y boca "o": hay un obstáculo al frente.
     oled.fillCircle(39, 23, 9, SSD1306_WHITE);
     oled.fillCircle(89, 23, 9, SSD1306_WHITE);
-    oled.drawCircle(64, 46, 6, SSD1306_WHITE);
-    oled.drawCircle(64, 46, 5, SSD1306_WHITE);
+    oled.fillCircle(39, 23, 3, SSD1306_BLACK);
+    oled.fillCircle(89, 23, 3, SSD1306_BLACK);
+    oled.drawRoundRect(57, 40, 14, 16, 6, SSD1306_WHITE);
   } else {
     // Cara tranquila mientras espera en BASE/P1/P2.
-    oled.fillRoundRect(30, 10, 18, 26, 9, SSD1306_WHITE);
-    oled.fillRoundRect(80, 10, 18, 26, 9, SSD1306_WHITE);
-    for (uint8_t grosor = 0; grosor < 3; grosor++) {
-      oled.drawCircleHelper(64, 40, 15 - grosor, 0x0C, SSD1306_WHITE);
-    }
+    oled.fillRoundRect(27, 14, 25, 20, 8, SSD1306_WHITE);
+    oled.fillRoundRect(76, 14, 25, 20, 8, SSD1306_WHITE);
+    oled.fillCircle(39, 24, 4, SSD1306_BLACK);
+    oled.fillCircle(88, 24, 4, SSD1306_BLACK);
+    oled.drawLine(48, 43, 55, 50, SSD1306_WHITE);
+    oled.drawLine(55, 50, 73, 50, SSD1306_WHITE);
+    oled.drawLine(73, 50, 80, 43, SSD1306_WHITE);
+    oled.drawLine(48, 44, 55, 51, SSD1306_WHITE);
+    oled.drawLine(55, 51, 73, 51, SSD1306_WHITE);
+    oled.drawLine(73, 51, 80, 44, SSD1306_WHITE);
   }
 
   oled.display();
@@ -297,15 +415,15 @@ void cerrarCompuertas() {
 
 void irAPunto(Punto solicitado);
 
-void abrirCompuerta(CompuertaActiva solicitada) {
+bool abrirCompuerta(CompuertaActiva solicitada) {
   // Las tapas solo se abren cuando RECI está quieto en una parada.
   if (modo != Modo::Detenido) {
     informar(F("No abro compuerta mientras RECI se mueve."));
-    return;
+    return false;
   }
   if (compuertaActiva != CompuertaActiva::Ninguna) {
     informar(F("Una compuerta ya esta abierta."));
-    return;
+    return false;
   }
 
   if (solicitada == CompuertaActiva::Vidrio) {
@@ -323,6 +441,7 @@ void abrirCompuerta(CompuertaActiva solicitada) {
   compuertaActiva = solicitada;
   cerrarCompuertaEn = millis() + kCompuertaAbiertaMs;
   mostrarCara(CaraReci::Feliz);
+  return true;
 }
 
 void actualizarCompuerta() {
@@ -345,27 +464,49 @@ void actualizarCompuerta() {
   }
 }
 
-// Protocolo estable para la ESP32-CAM. Los textos amigables del Monitor
-// Serial se mantienen separados de estos eventos para que la app no tenga
-// que adivinar cuándo RECI arrancó, llegó o encontró un obstáculo.
-void emitirEvento(const __FlashStringHelper* tipo, Punto punto) {
-  Serial2.print(F("EVENT:"));
-  Serial2.print(tipo);
-  Serial2.print(':');
-  Serial2.println(nombrePunto(punto));
+void enviarPulsoAEsp(unsigned long duracion,
+                     const __FlashStringHelper* etiqueta) {
+  // D16 queda normalmente HIGH. El divisor 1k/2k entrega ~3.3 V al GPIO13.
+  // Un pulso LOW no puede sobrepasar el voltaje permitido por la ESP32.
+  digitalWrite(kMegaTx2Pin, LOW);
+  delay(duracion);
+  digitalWrite(kMegaTx2Pin, HIGH);
+  delay(kSeparacionPulsoMegaMs);
+
+  Serial.print(F("RECI -> ESP: pulso "));
+  Serial.print(etiqueta);
+  Serial.print(F(" de "));
+  Serial.print(duracion);
+  Serial.println(F(" ms."));
 }
 
-void emitirObstaculo() {
-  Serial2.println(F("EVENT:OBSTACLE"));
+void emitirLlegada(Punto punto) {
+  if (punto == Punto::P1) {
+    enviarPulsoAEsp(kPulsoMegaLlegadaP1Ms, F("LLEGADA P1"));
+  } else if (punto == Punto::P2) {
+    enviarPulsoAEsp(kPulsoMegaLlegadaP2Ms, F("LLEGADA P2"));
+  }
+  proximaPresenciaPermitidaEn = millis() + kEsperaPresenciaTrasLlegadaMs;
 }
 
 void actualizarPresencia() {
-  if (modo != Modo::Detenido) return;
-  if (static_cast<long>(millis() - proximaPresenciaPermitidaEn) < 0) return;
-  if (digitalRead(kPirPin) != HIGH) return;
+  const bool hayPresencia = digitalRead(kPirPin) == HIGH;
+  if (!hayPresencia) {
+    // Exigimos que el PIR vuelva a LOW antes de aceptar otra persona. Esto
+    // evita iniciar varias clasificaciones mientras una misma señal sigue
+    // activa durante varios segundos.
+    pirListoParaNuevoEvento = true;
+    return;
+  }
 
+  if (modo != Modo::Detenido) return;
+  if (compuertaActiva != CompuertaActiva::Ninguna) return;
+  if (!pirListoParaNuevoEvento) return;
+  if (static_cast<long>(millis() - proximaPresenciaPermitidaEn) < 0) return;
+
+  pirListoParaNuevoEvento = false;
   proximaPresenciaPermitidaEn = millis() + kEsperaPresenciaMs;
-  Serial2.println(F("EVENT:PRESENCE"));
+  enviarPulsoAEsp(kPulsoMegaPresenciaMs, F("PRESENCIA"));
   informar(F("PRESENCIA: alguien se acerco"));
   if (!qrVisible) mostrarCara(CaraReci::Feliz);
   mostrarLcd("Hola, soy RECI", "Recicla aqui");
@@ -435,7 +576,6 @@ void iniciarSiguienteTramo() {
   modo = Modo::EnRuta;
   mostrarCara(CaraReci::Movimiento);
   mostrarRutaEnLcd("Voy hacia", proximo);
-  emitirEvento(F("ROUTE_STARTED"), proximo);
   Serial.print(F("RECI: ruta "));
   Serial.print(nombrePunto(puntoActual));
   Serial.print(F(" -> "));
@@ -451,7 +591,7 @@ void irAPunto(Punto solicitado) {
     informarPunto(F("RECI ya esta en "), solicitado);
     mostrarRutaEnLcd("RECI ya esta en", solicitado);
     mostrarCara(CaraReci::Feliz);
-    emitirEvento(F("ARRIVED"), solicitado);
+    emitirLlegada(solicitado);
     return;
   }
   if (!tiemposConfigurados()) {
@@ -519,7 +659,6 @@ void actualizarRuta() {
       frenteLibreDesde = 0;
       mostrarCara(CaraReci::Alerta);
       mostrarLcd("Obstaculo!", "Reanuda solo");
-      emitirObstaculo();
       informar(F("EMERGENCIA: obstaculo frontal. Reanuda solo al despejar."));
       return;
     }
@@ -531,7 +670,7 @@ void actualizarRuta() {
   puntoActual = siguientePunto(puntoActual);
   mostrarCara(CaraReci::Feliz);
   mostrarRutaEnLcd("Llegue a", puntoActual);
-  emitirEvento(F("ARRIVED"), puntoActual);
+  emitirLlegada(puntoActual);
   informarPunto(F("Llegada estimada: "), puntoActual);
 
   if (puntoActual == destino) {
@@ -551,6 +690,46 @@ bool es(const char* texto, const char* esperado) {
 
 bool empiezaCon(const char* texto, const char* prefijo) {
   return strncmp(texto, prefijo, strlen(prefijo)) == 0;
+}
+
+float leerPromedioAdc(uint8_t pin) {
+  // Se descarta la primera lectura después de cambiar de canal ADC.
+  static_cast<void>(analogRead(pin));
+  delay(2);
+
+  uint32_t suma = 0;
+  for (uint8_t muestra = 0; muestra < kEspTxSenseSamples; ++muestra) {
+    suma += static_cast<uint16_t>(analogRead(pin));
+    delay(1);
+  }
+  return static_cast<float>(suma) / kEspTxSenseSamples;
+}
+
+void diagnosticarVoltajeEspTx() {
+  const float lecturaGpio14 = leerPromedioAdc(kEspTxSensePin);
+  const float lectura3v3 = leerPromedioAdc(kEsp3v3SensePin);
+  if (lectura3v3 < 100.0F) {
+    Serial.println(F("DIAG: falta conectar ESP 3V3 -> Mega A9."));
+    return;
+  }
+
+  const float porcentaje3v3 = lecturaGpio14 * 100.0F / lectura3v3;
+
+  Serial.print(F("DIAG GPIO14 A8="));
+  Serial.print(lecturaGpio14, 0);
+  Serial.print(F("/"));
+  Serial.print(kAdcFullScale);
+  Serial.print(F(" | ESP 3V3 A9="));
+  Serial.print(lectura3v3, 0);
+  Serial.print(F("/"));
+  Serial.print(kAdcFullScale);
+  Serial.print(F(" | GPIO14 equivale al "));
+  Serial.print(porcentaje3v3, 0);
+  Serial.println(F("% de 3V3"));
+}
+
+void rastrearSiA8SigueD16() {
+  Serial.println(F("TRACE16 desactivado: D16 ahora envia pulsos a la ESP."));
 }
 
 bool permitirMovimientoManual() {
@@ -587,16 +766,73 @@ void procesarCaraEsp32(const char* entrada) {
   }
 }
 
+// Protocolo compacto ESP32 -> Mega. Cada orden actualiza una pantalla y la
+// carita en una sola operación; evita enviar "CMD:FACE" y "CMD:LCD" seguidos
+// mientras la OLED aún está redibujándose por I2C.
+void mostrarSaludoEsp32(const char* nombre) {
+  char linea1[17] = "Hola, ";
+  if (nombre != nullptr && nombre[0] != '\0') {
+    const size_t espacio = sizeof(linea1) - strlen(linea1) - 1;
+    strncat(linea1, nombre, espacio);
+  }
+  mostrarCara(CaraReci::Lista);
+  mostrarLcd(linea1, "Soy RECI");
+}
+
+bool procesarComandoCompacto(char* entrada) {
+  if (es(entrada, "@S")) {
+    mostrarCara(CaraReci::Lista);
+    mostrarLcd("Hola, soy RECI", "Preparando camara");
+  } else if (es(entrada, "@R")) {
+    mostrarCara(CaraReci::Lista);
+    mostrarLcd("Hola, soy Reci", "Envia C para leer");
+  } else if (es(entrada, "@H")) {
+    mostrarCara(CaraReci::Feliz);
+    mostrarLcd("Hola, soy RECI", "Recicla y gana");
+  } else if (es(entrada, "@B")) {
+    mostrarCara(CaraReci::Lista);
+    mostrarLcd("Ubica botella", "Frente a camara");
+  } else if (es(entrada, "@A")) {
+    mostrarCara(CaraReci::Movimiento);
+    mostrarLcd("Analizando residuo", "No lo retires");
+  } else if (es(entrada, "@U")) {
+    mostrarCara(CaraReci::Alerta);
+    mostrarLcd("No estoy seguro", "Intenta de nuevo");
+  } else if (es(entrada, "@P")) {
+    abrirCompuerta(CompuertaActiva::Plastico);
+  } else if (es(entrada, "@V")) {
+    abrirCompuerta(CompuertaActiva::Vidrio);
+  } else if (es(entrada, "@L")) {
+    mostrarLcd("Gracias!", "Puntos agregados");
+  } else if (es(entrada, "@O")) {
+    mostrarLcd("Gracias!", "Tapa abierta");
+  } else if (empiezaCon(entrada, "@G:")) {
+    mostrarSaludoEsp32(entrada + strlen("@G:"));
+  } else if (empiezaCon(entrada, "@Q:")) {
+    mostrarLcd("Escanea el QR", "Para tus puntos");
+    mostrarQrReal(entrada + strlen("@Q:"));
+  } else {
+    return false;
+  }
+  return true;
+}
+
 void procesarComando(char* entrada) {
   // Estos mensajes vienen de la ESP32-CAM. No mueven las ruedas; solo
   // actualizan las pantallas o abren una compuerta cuando RECI está quieto.
-  if (empiezaCon(entrada, "CMD:LCD:")) {
+  if (procesarComandoCompacto(entrada)) {
+    return;
+  } else if (empiezaCon(entrada, "CMD:LCD:")) {
     procesarMensajeLcd(entrada);
   } else if (empiezaCon(entrada, "CMD:FACE:")) {
     procesarCaraEsp32(entrada);
   } else if (empiezaCon(entrada, "CMD:QR:")) {
     mostrarLcd("Escanea el QR", "Para tus puntos");
     mostrarQrReal(entrada + strlen("CMD:QR:"));
+  } else if (es(entrada, "PING")) {
+    // Diagnóstico del regreso Mega -> ESP sin mover ni abrir nada.
+    mostrarLcd("PULSO A ESP", "Enviando prueba");
+    enviarPulsoAEsp(kPulsoMegaPongMs, F("PONG"));
   } else if (es(entrada, "VIDRIO") || es(entrada, "CMD:CLASSIFY:vidrio")) {
     abrirCompuerta(CompuertaActiva::Vidrio);
   } else if (es(entrada, "PLASTICO") || es(entrada, "CMD:CLASSIFY:plastico")) {
@@ -673,63 +909,274 @@ void procesarComando(char* entrada) {
       mostrarLcd("Ruta reanudada", "Con cuidado");
       informar(F("Ruta reanudada."));
     }
+  } else if (es(entrada, "V14")) {
+    diagnosticarVoltajeEspTx();
+  } else if (es(entrada, "TRACE16")) {
+    rastrearSiA8SigueD16();
   } else if (es(entrada, "STATUS")) {
     informarPunto(F("Posicion: "), puntoActual);
     informarPunto(F("Destino: "), destino);
   } else if (es(entrada, "HELP")) {
-    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | STATUS"));
+    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | V14 TRACE16 | STATUS"));
   } else {
     informar(F("ERROR: comando invalido. Escribe HELP."));
   }
 }
 
-void leerSerial(Stream& puerto) {
+bool coincidePulsoEsp(unsigned long duracion, unsigned long esperado) {
+  const unsigned long minimo = esperado > kToleranciaPulsoMs
+      ? esperado - kToleranciaPulsoMs
+      : 0;
+  return duracion >= minimo && duracion <= esperado + kToleranciaPulsoMs;
+}
+
+void iniciarRecepcionCodigoQr() {
+  recibiendoCodigoQr = true;
+  longitudCodigoQrRecibido = 0;
+  codigoQrRecibido[0] = '\0';
+  ultimoCaracterQrEn = millis();
+  mostrarCara(CaraReci::Lista);
+  mostrarLcd("Generando QR", "Espera un poco");
+  informar(F("QR: inicio de codigo recibido."));
+}
+
+void cancelarRecepcionCodigoQr(const __FlashStringHelper* motivo) {
+  recibiendoCodigoQr = false;
+  longitudCodigoQrRecibido = 0;
+  codigoQrRecibido[0] = '\0';
+  mostrarCara(CaraReci::Alerta);
+  mostrarLcd("QR no valido", "Intenta de nuevo");
+  informar(motivo);
+}
+
+bool decodificarCaracterQr(unsigned long duracion, char& caracter) {
+  if (duracion + kToleranciaQrCaracterMs < kPulsoQrCaracterBaseMs) return false;
+
+  const unsigned long ajustado = duracion - kPulsoQrCaracterBaseMs;
+  const uint8_t indice = static_cast<uint8_t>(
+      (ajustado + (kPulsoQrCaracterPasoMs / 2)) / kPulsoQrCaracterPasoMs);
+  const uint8_t totalCaracteres = sizeof(kAlfabetoCodigoQr) - 1;
+  if (indice >= totalCaracteres) return false;
+
+  const unsigned long esperado = kPulsoQrCaracterBaseMs +
+      static_cast<unsigned long>(indice) * kPulsoQrCaracterPasoMs;
+  const unsigned long diferencia = duracion > esperado
+      ? duracion - esperado
+      : esperado - duracion;
+  if (diferencia > kToleranciaQrCaracterMs) return false;
+
+  caracter = kAlfabetoCodigoQr[indice];
+  return true;
+}
+
+void recibirCaracterCodigoQr(unsigned long duracion) {
+  char caracter = '\0';
+  if (!decodificarCaracterQr(duracion, caracter)) {
+    cancelarRecepcionCodigoQr(F("QR: pulso de caracter invalido."));
+    return;
+  }
+
+  codigoQrRecibido[longitudCodigoQrRecibido++] = caracter;
+  codigoQrRecibido[longitudCodigoQrRecibido] = '\0';
+  ultimoCaracterQrEn = millis();
+
+  if (longitudCodigoQrRecibido < kLongitudCodigoQr) return;
+
+  recibiendoCodigoQr = false;
+  mostrarQrReal(codigoQrRecibido);
+  mostrarLcd("Escanea el QR", "Para tus puntos");
+  Serial.print(F("QR: codigo real listo: "));
+  Serial.println(codigoQrRecibido);
+}
+
+void actualizarRecepcionCodigoQr() {
+  if (!recibiendoCodigoQr) return;
+  if (millis() - ultimoCaracterQrEn <= kTimeoutRecepcionQrMs) return;
+  cancelarRecepcionCodigoQr(F("QR: tiempo agotado al recibir codigo."));
+}
+
+void procesarPulsoEsp(unsigned long duracion) {
+  // Mientras se reciben los ocho símbolos QR, estas duraciones no son
+  // comandos normales: son caracteres 0-9/A-Z.
+  if (recibiendoCodigoQr) {
+    recibirCaracterCodigoQr(duracion);
+    return;
+  }
+
+  Serial.print(F("RECI: pulso ESP de "));
+  Serial.print(duracion);
+  Serial.println(F(" ms."));
+
+  if (coincidePulsoEsp(duracion, kPulsoQrInicioMs)) {
+    iniciarRecepcionCodigoQr();
+  } else if (coincidePulsoEsp(duracion, kPulsoAnalizarMs)) {
+    mostrarCara(CaraReci::Movimiento);
+    mostrarLcd("Analizando residuo", "No lo retires");
+  } else if (coincidePulsoEsp(duracion, kPulsoDesconocidoMs)) {
+    mostrarCara(CaraReci::Alerta);
+    mostrarLcd("No estoy seguro", "Intenta de nuevo");
+  } else if (coincidePulsoEsp(duracion, kPulsoPlasticoMs)) {
+    if (abrirCompuerta(CompuertaActiva::Plastico)) {
+      delay(kRetrasoConfirmacionCompuertaMs);
+      enviarPulsoAEsp(kPulsoMegaCompuertaConfirmadaMs,
+                      F("COMPUERTA PLASTICO CONFIRMADA"));
+    }
+  } else if (coincidePulsoEsp(duracion, kPulsoVidrioMs)) {
+    if (abrirCompuerta(CompuertaActiva::Vidrio)) {
+      delay(kRetrasoConfirmacionCompuertaMs);
+      enviarPulsoAEsp(kPulsoMegaCompuertaConfirmadaMs,
+                      F("COMPUERTA VIDRIO CONFIRMADA"));
+    }
+  } else if (coincidePulsoEsp(duracion, kPulsoP1Ms)) {
+    irAPunto(Punto::P1);
+  } else if (coincidePulsoEsp(duracion, kPulsoP2Ms)) {
+    irAPunto(Punto::P2);
+  } else if (coincidePulsoEsp(duracion, kPulsoSaludoMs)) {
+    mostrarCara(CaraReci::Feliz);
+    mostrarLcd("Hola, soy RECI", "Recicla y gana");
+  } else if (coincidePulsoEsp(duracion, kPulsoBotellaMs)) {
+    mostrarCara(CaraReci::Lista);
+    mostrarLcd("Ubica botella", "Frente a camara");
+  } else if (coincidePulsoEsp(duracion, kPulsoListoMs)) {
+    mostrarCara(CaraReci::Lista);
+    mostrarLcd("Hola, soy RECI", "Listo para usar");
+  } else if (coincidePulsoEsp(duracion, kPulsoErrorMs)) {
+    mostrarCara(CaraReci::Alerta);
+    mostrarLcd("Error de ESP", "Revisa camara");
+  } else if (coincidePulsoEsp(duracion, kPulsoPuntosDirectosMs)) {
+    mostrarCara(CaraReci::Feliz);
+    mostrarLcd("Gracias!", "Puntos agregados");
+  } else if (coincidePulsoEsp(duracion, kPulsoPuntosAppMs)) {
+    mostrarCara(CaraReci::Lista);
+    mostrarLcd("Abre la app", "Para tus puntos");
+  } else if (coincidePulsoEsp(duracion, kPulsoGraciasMs)) {
+    mostrarCara(CaraReci::Feliz);
+    mostrarLcd("Gracias!", "Tapa cerrada");
+  } else if (coincidePulsoEsp(duracion, kPulsoPruebaMs)) {
+    mostrarLcd("PULSO ESP", "Mega recibe OK");
+    informar(F("PULSO ESP -> Mega OK."));
+  } else {
+    informar(F("PULSO ESP desconocido; ignorado."));
+  }
+}
+
+void actualizarPulsoEsp() {
+  const bool nivelAlto = digitalRead(kPulsoEspPin) == HIGH;
+  const unsigned long ahora = millis();
+
+  // GPIO14 puede emitir niveles transitorios al arrancar la ESP32-CAM. Se
+  // ignoran los primeros segundos para que nunca se interpreten como ruta o
+  // apertura de compuerta.
+  if (static_cast<long>(ahora - habilitarPulsosEspEn) < 0) {
+    pulsoEspActivo = nivelAlto;
+    if (nivelAlto) inicioPulsoEspEn = ahora;
+    return;
+  }
+
+  if (nivelAlto && !pulsoEspActivo) {
+    pulsoEspActivo = true;
+    inicioPulsoEspEn = ahora;
+    return;
+  }
+
+  if (!nivelAlto && pulsoEspActivo) {
+    pulsoEspActivo = false;
+    if (inicioPulsoEspEn < habilitarPulsosEspEn) return;
+    procesarPulsoEsp(ahora - inicioPulsoEspEn);
+  }
+}
+
+void leerSerial(Stream& puerto, EntradaSerial& entrada) {
   while (puerto.available() > 0) {
     const char caracter = static_cast<char>(puerto.read());
     if (caracter == '\r') continue;
     if (caracter == '\n') {
-      if (longitudComando > 0) {
-        comando[longitudComando] = '\0';
-        procesarComando(comando);
-        longitudComando = 0;
+      if (!entrada.descartarHastaNuevaLinea && entrada.longitud > 0) {
+        entrada.comando[entrada.longitud] = '\0';
+        procesarComando(entrada.comando);
       }
+      entrada.longitud = 0;
+      entrada.descartarHastaNuevaLinea = false;
       continue;
     }
-    if (longitudComando >= kComandoMax) {
-      longitudComando = 0;
-      informar(F("ERROR: comando demasiado largo"));
+    if (entrada.descartarHastaNuevaLinea) continue;
+    if (entrada.longitud >= kComandoMax) {
+      entrada.longitud = 0;
+      entrada.descartarHastaNuevaLinea = true;
+      informar(F("ERROR: comando demasiado largo; trama descartada."));
       continue;
     }
-    comando[longitudComando++] = caracter;
+    entrada.comando[entrada.longitud++] = caracter;
   }
 }
 
 }  // namespace
 
 void setup() {
-  Serial.begin(kSerialBaud);
-  Serial2.begin(kSerialBaud);  // ESP32-CAM: Mega RX2=17, TX2=16.
+  Serial.begin(kUsbSerialBaud);
+  delay(250);
+  Serial.println(F("BOOT: Mega iniciado a 9600 baud."));
+  Serial.println(F("POSICION INICIAL: BASE (modo demo)."));
+  Serial.flush();
+  pinMode(SDA, INPUT_PULLUP);
+  pinMode(SCL, INPUT_PULLUP);
+  delay(5);
+  diagnosticarLineasI2c(F("al inicio"));
+  // Comunicación bidireccional robusta por pulsos:
+  //   ESP GPIO14 -> Mega D17 (HIGH)
+  //   Mega D16 -> divisor -> ESP GPIO13 (LOW)
+  pinMode(kMegaTx2Pin, OUTPUT);
+  digitalWrite(kMegaTx2Pin, HIGH);
+  pinMode(kPulsoEspPin, INPUT);
+  habilitarPulsosEspEn = millis() + kIgnorarPulsosAlArrancarMs;
+  Serial.println(F("PASO 1: pulsos bidireccionales iniciados."));
+  Serial.println(F("MODO: GPIO14->D17 y D16->GPIO13 por pulsos."));
+  diagnosticarLineasI2c(F("despues de Serial2"));
 
   const uint8_t pinesMotor[] = {kIzqIn1, kIzqIn2, kIzqIn3, kIzqIn4,
                                 kDerIn1, kDerIn2, kDerIn3, kDerIn4};
   for (uint8_t pin : pinesMotor) pinMode(pin, OUTPUT);
   detenerMotores();
+  Serial.println(F("PASO 2: motores detenidos."));
+  diagnosticarLineasI2c(F("despues de motores"));
 
   pinMode(kTrigFrontal, OUTPUT);
   pinMode(kEchoFrontal, INPUT);
   digitalWrite(kTrigFrontal, LOW);
   pinMode(kPirPin, INPUT);
+  proximaPresenciaPermitidaEn = millis() + kPirWarmupMs;
+  Serial.println(F("PASO 3: sensores configurados."));
+  diagnosticarLineasI2c(F("despues de sensores"));
 
+  Serial.println(F("PASO 4: iniciando servos."));
   servoVidrio.attach(kServoVidrioPin);
+  diagnosticarLineasI2c(F("despues de servo vidrio"));
   servoPlastico.attach(kServoPlasticoPin);
+  diagnosticarLineasI2c(F("despues de servo plastico"));
   cerrarCompuertas();
+  Serial.println(F("PASO 5: servos cerrados."));
+  diagnosticarLineasI2c(F("despues de cerrar servos"));
 
+  Serial.println(F("PASO 6: iniciando bus I2C."));
+  pinMode(SDA, INPUT_PULLUP);
+  pinMode(SCL, INPUT_PULLUP);
+  delay(5);
+  diagnosticarLineasI2c(F("antes de Wire"));
   Wire.begin();
-  Wire.setClock(400000L);
-  oledDisponible = oled.begin(SSD1306_SWITCHCAPVCC, kDireccionOled);
-  if (oledDisponible) {
-    mostrarCara(CaraReci::Lista);
-    Serial.println(F("OLED: carita RECI lista."));
+  Wire.setWireTimeout(kI2cTimeoutUs, true);
+  Wire.setClock(kI2cClockHz);
+  delay(5);
+  diagnosticarLineasI2c(F("despues de Wire"));
+  Serial.println(F("PASO 7: buscando OLED en 0x3C."));
+  if (i2cResponde(kDireccionOled)) {
+    Serial.println(F("PASO 8: OLED detectada; iniciando."));
+    oledDisponible = oled.begin(SSD1306_SWITCHCAPVCC, kDireccionOled);
+    if (oledDisponible) {
+      mostrarCara(CaraReci::Lista);
+      Serial.println(F("OLED: carita RECI lista."));
+    } else {
+      Serial.println(F("AVISO: OLED detectada pero no pudo iniciar."));
+    }
   } else {
     // El robot sigue operativo aunque la pantalla se desconecte.
     Serial.println(F("AVISO: OLED no encontrada en 0x3C."));
@@ -752,8 +1199,9 @@ void setup() {
 }
 
 void loop() {
-  leerSerial(Serial);   // Pruebas por USB / Monitor Serial.
-  if (kEsp32CamConectada) leerSerial(Serial2);  // Órdenes futuras de la ESP32-CAM.
+  leerSerial(Serial, entradaUsb);  // Pruebas por USB / Monitor Serial.
+  actualizarPulsoEsp();             // ESP GPIO14 -> Mega D17, sin UART.
+  actualizarRecepcionCodigoQr();    // Completa o cancela un QR incompleto.
   actualizarRuta();
   actualizarPresencia();
   actualizarCompuerta();

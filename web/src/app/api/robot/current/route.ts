@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('robot_positions')
-    .select('lat, lng, status, recorded_at')
+    .select('point_id, lat, lng, status, recorded_at')
     .order('recorded_at', { ascending: false })
     .limit(1)
     .single()

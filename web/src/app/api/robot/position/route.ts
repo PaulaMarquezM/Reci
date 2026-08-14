@@ -2,7 +2,7 @@ import { type NextRequest } from 'next/server'
 import { ok, err, requireRobotAuth, createServiceClient } from '@/lib/api'
 
 // POST /api/robot/position
-// El robot reporta dónde está. Body: { point_id, status? }
+// El robot reporta dónde está. Body: { point_id | point_name, status? }
 //
 // Reci no tiene GPS: solo se mueve entre los puntos fijos de robot_points,
 // así que reporta el punto y aquí resolvemos lat/lng desde la tabla. Con
@@ -20,10 +20,12 @@ export async function POST(request: NextRequest) {
   let body: unknown
   try { body = await request.json() } catch { return err('Body inválido', 400) }
 
-  const { point_id, status = 'idle' } = body as Record<string, unknown>
+  const { point_id, point_name, status = 'idle' } = body as Record<string, unknown>
 
-  if (!point_id || typeof point_id !== 'string') {
-    return err('point_id es requerido', 400)
+  const pointId = typeof point_id === 'string' ? point_id : null
+  const pointName = typeof point_name === 'string' ? point_name.trim() : null
+  if (!pointId && !pointName) {
+    return err('point_id o point_name es requerido', 400)
   }
 
   if (!['idle', 'moving', 'charging'].includes(status as string)) {
@@ -32,11 +34,16 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient()
 
-  const { data: point } = await supabase
+  let pointQuery = supabase
     .from('robot_points')
     .select('id, lat, lng')
-    .eq('id', point_id)
-    .single()
+    .eq('active', true)
+
+  pointQuery = pointId
+    ? pointQuery.eq('id', pointId)
+    : pointQuery.eq('name', pointName!)
+
+  const { data: point } = await pointQuery.single()
 
   if (!point) return err('Punto no encontrado', 404)
 

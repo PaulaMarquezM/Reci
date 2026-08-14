@@ -40,21 +40,63 @@ constexpr int kFlashLedPin = 4;
 // El LED integrado produce picos de corriente que reinician algunas ESP32-CAM
 // alimentadas por USB. Para esta prueba usa una luz externa frontal.
 constexpr bool kUseFlashLed = false;
+// La ESP sigue recibiendo eventos del Mega por GPIO13 mediante el divisor.
 constexpr int kMegaRxPin = 13;
-constexpr int kMegaTxPin = 14;
-constexpr unsigned long kMegaBaud = 9600;
+// GPIO14 deja de ser UART: entrega pulsos largos y robustos hacia Mega D17.
+constexpr int kMegaPulsePin = 14;
+// UART1 queda solo en sentido Mega -> ESP. El Monitor Serial USB de la ESP
+// sigue funcionando a 115200 y no se debe cambiar en Arduino IDE.
+constexpr unsigned long kMegaBaud = 4800;
+// Cada comando se codifica por la duración HIGH de GPIO14. La separación de
+// 300 ms evita que dos pulsos se unan aun cuando el Mega redibuja la OLED.
+constexpr unsigned long kPulsoAnalizarMs = 300UL;
+constexpr unsigned long kPulsoDesconocidoMs = 600UL;
+constexpr unsigned long kPulsoPlasticoMs = 900UL;
+constexpr unsigned long kPulsoVidrioMs = 1200UL;
+constexpr unsigned long kPulsoP1Ms = 1500UL;
+constexpr unsigned long kPulsoP2Ms = 1800UL;
+constexpr unsigned long kPulsoSaludoMs = 2100UL;
+constexpr unsigned long kPulsoBotellaMs = 2400UL;
+constexpr unsigned long kPulsoListoMs = 2700UL;
+constexpr unsigned long kPulsoErrorMs = 3000UL;
+constexpr unsigned long kPulsoPuntosDirectosMs = 3300UL;
+constexpr unsigned long kPulsoPuntosAppMs = 3600UL;
+constexpr unsigned long kPulsoGraciasMs = 3900UL;
+constexpr unsigned long kPulsoPruebaMs = 4200UL;
+constexpr unsigned long kMegaPulseGapMs = 300UL;
+// La ESP no registra el reciclaje ni concede puntos hasta que el Mega
+// confirme que aceptó la orden de abrir la compuerta.
+constexpr unsigned long kCompuertaAckTimeoutMs = 3000UL;
+constexpr uint8_t kCompuertaIntentos = 2;
+// Protocolo QR por un solo cable GPIO14 -> Mega D17. Un pulso de inicio abre
+// la recepción y ocho pulsos siguientes representan 0-9/A-Z. Así el Mega
+// puede dibujar el QR real sin depender del UART ruidoso ESP -> Mega.
+constexpr unsigned long kPulsoQrInicioMs = 4500UL;
+constexpr unsigned long kPulsoQrCaracterBaseMs = 180UL;
+constexpr unsigned long kPulsoQrCaracterPasoMs = 60UL;
+constexpr unsigned long kPulsoQrInicioGapMs = 240UL;
+constexpr unsigned long kPulsoQrCaracterGapMs = 120UL;
+constexpr uint8_t kLongitudClaimCode = 8;
 constexpr unsigned long kFlashWarmupMs = 220UL;
 constexpr unsigned long kCaptureIntervalMs = 350UL;
 constexpr unsigned long kWiFiConnectTimeoutMs = 60'000UL;
-constexpr unsigned long kClockSyncTimeoutMs = 15000UL;
-constexpr uint16_t kVisionHttpTimeoutMs = 30'000;
+constexpr unsigned long kClockSyncTimeoutMs = 20000UL;
+constexpr uint8_t kClockSyncAttempts = 3;
+constexpr uint16_t kVisionHttpTimeoutMs = 60000U;
+constexpr int32_t kVisionConnectTimeoutMs = 15000;
+constexpr uint16_t kRecycleHttpTimeoutMs = 10000U;
+constexpr int32_t kRecycleConnectTimeoutMs = 5000;
 constexpr uint8_t kCaptureCount = 3;
 constexpr char kBoundary[] = "ReciMaterialBoundary2026";
 constexpr char kVotingPolicy[] = "seis-votos-v2-local-unanime";
 
+void sendMega(const String& command);
+bool sendClaimCodeToMega(String claimCode);
+
 HardwareSerial mega(1);
-ReciRobotCallDispatcher dispatcher(mega);
+ReciRobotCallDispatcher dispatcher(mega, sendMega);
 bool lastRecycleLinkedToCall = false;
+bool servicesReady = false;
 
 struct MaterialVotes {
   uint8_t plastico = 0;
@@ -101,14 +143,153 @@ class MultipartCameraStream final : public Stream {
   size_t _position = 0;
 };
 
+unsigned long pulsoParaComando(const String& command) {
+  if (command == "@A") return kPulsoAnalizarMs;
+  if (command == "@U") return kPulsoDesconocidoMs;
+  if (command == "@P") return kPulsoPlasticoMs;
+  if (command == "@V") return kPulsoVidrioMs;
+  if (command == "P1") return kPulsoP1Ms;
+  if (command == "P2") return kPulsoP2Ms;
+  if (command == "@H" || command.startsWith("@G:")) return kPulsoSaludoMs;
+  if (command == "@B") return kPulsoBotellaMs;
+  if (command == "@S" || command == "@R") return kPulsoListoMs;
+  if (command == "@E") return kPulsoErrorMs;
+  if (command == "@L") return kPulsoPuntosDirectosMs;
+  if (command == "@N" || command.startsWith("@Q:")) return kPulsoPuntosAppMs;
+  if (command == "@O") return kPulsoGraciasMs;
+  if (command == "@T") return kPulsoPruebaMs;
+  return 0;
+}
+
 void sendMega(const String& command) {
-  mega.println(command);
-  Serial.print(F("MEGA <- "));
-  Serial.println(command);
+  const unsigned long duracion = pulsoParaComando(command);
+  if (duracion == 0) {
+    Serial.print(F("PULSO: orden sin equivalente: "));
+    Serial.println(command);
+    return;
+  }
+
+  digitalWrite(kMegaPulsePin, HIGH);
+  delay(duracion);
+  digitalWrite(kMegaPulsePin, LOW);
+  delay(kMegaPulseGapMs);
+
+  Serial.print(F("MEGA ~> PULSO "));
+  Serial.print(command);
+  Serial.print(F(" ("));
+  Serial.print(duracion);
+  Serial.println(F(" ms)"));
+}
+
+bool esperarConfirmacionCompuerta() {
+  const unsigned long limite = millis() + kCompuertaAckTimeoutMs;
+  bool pulsoDetectado = digitalRead(kMegaRxPin) == LOW;
+
+  while (static_cast<long>(millis() - limite) < 0) {
+    const bool nivelBajo = digitalRead(kMegaRxPin) == LOW;
+    if (nivelBajo) {
+      pulsoDetectado = true;
+    } else if (pulsoDetectado) {
+      Serial.println(F("COMPUERTA: Mega confirmo apertura."));
+      return true;
+    }
+    delay(5);
+  }
+
+  Serial.println(F("COMPUERTA: no llego confirmacion del Mega."));
+  return false;
+}
+
+bool abrirCompuertaConfirmada(const String& material) {
+  const String comando = material == "vidrio" ? "@V" : "@P";
+
+  for (uint8_t intento = 1; intento <= kCompuertaIntentos; ++intento) {
+    Serial.printf("COMPUERTA: enviando %s, intento %u/%u...\n",
+                  material.c_str(), intento, kCompuertaIntentos);
+    sendMega(comando);
+    if (esperarConfirmacionCompuerta()) return true;
+    delay(300);
+  }
+
+  return false;
+}
+
+void emitirPulsoQr(unsigned long duracion, unsigned long pausa) {
+  digitalWrite(kMegaPulsePin, HIGH);
+  delay(duracion);
+  digitalWrite(kMegaPulsePin, LOW);
+  delay(pausa);
+}
+
+int indiceCaracterQr(char caracter) {
+  if (caracter >= '0' && caracter <= '9') return caracter - '0';
+  if (caracter >= 'A' && caracter <= 'Z') return 10 + (caracter - 'A');
+  return -1;
+}
+
+bool sendClaimCodeToMega(String claimCode) {
+  claimCode.trim();
+  claimCode.toUpperCase();
+  if (claimCode.length() != kLongitudClaimCode) {
+    Serial.println(F("QR: claim_code con longitud no compatible."));
+    return false;
+  }
+
+  uint8_t indices[kLongitudClaimCode] = {};
+  for (uint8_t index = 0; index < kLongitudClaimCode; ++index) {
+    const int valor = indiceCaracterQr(claimCode[index]);
+    if (valor < 0) {
+      Serial.println(F("QR: claim_code contiene un caracter no compatible."));
+      return false;
+    }
+    indices[index] = static_cast<uint8_t>(valor);
+  }
+
+  // El Mega cambia primero a "Generando QR"; después recibe los 8 símbolos
+  // sin redibujar la OLED entre caracteres. Esto evita los caracteres basura
+  // que producía el UART directo ESP -> Mega.
+  Serial.print(F("QR: enviando codigo real por pulsos: "));
+  Serial.println(claimCode);
+  emitirPulsoQr(kPulsoQrInicioMs, kPulsoQrInicioGapMs);
+
+  for (uint8_t index = 0; index < kLongitudClaimCode; ++index) {
+    const unsigned long duracion = kPulsoQrCaracterBaseMs +
+        static_cast<unsigned long>(indices[index]) * kPulsoQrCaracterPasoMs;
+    emitirPulsoQr(duracion, kPulsoQrCaracterGapMs);
+  }
+
+  Serial.println(F("QR: transferencia terminada; el Mega debe mostrarlo."));
+  return true;
 }
 
 void showOnLcd(const String& firstLine, const String& secondLine) {
-  sendMega("CMD:LCD:" + firstLine + "|" + secondLine);
+  Serial.print(F("LCD solicitado: "));
+  Serial.print(firstLine);
+  Serial.print(F(" | "));
+  Serial.println(secondLine);
+  sendMega("@E");
+}
+
+bool synchronizeClockForHttps() {
+  for (uint8_t attempt = 1; attempt <= kClockSyncAttempts; ++attempt) {
+    Serial.printf("HTTPS: sincronizando reloj (%u/%u)...\n", attempt, kClockSyncAttempts);
+    configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
+
+    const unsigned long deadline = millis() + kClockSyncTimeoutMs;
+    while (time(nullptr) < 1'700'000'000L &&
+           static_cast<long>(millis() - deadline) < 0) {
+      delay(200);
+    }
+
+    if (time(nullptr) >= 1'700'000'000L) {
+      Serial.println(F("HTTPS: reloj y certificado listos."));
+      return true;
+    }
+  }
+
+  Serial.println(F("ERROR: no se pudo sincronizar el reloj para HTTPS"));
+  showOnLcd("Error de reloj", "Revisa Internet");
+  return false;
 }
 
 bool connectWiFi() {
@@ -131,18 +312,7 @@ bool connectWiFi() {
   Serial.println(WiFi.localIP());
 
   if (String(RECI_API_BASE_URL).startsWith("https://")) {
-    configTime(0, 0, "pool.ntp.org", "time.google.com");
-    const unsigned long clockDeadline = millis() + kClockSyncTimeoutMs;
-    while (time(nullptr) < 1'700'000'000L &&
-           static_cast<long>(millis() - clockDeadline) < 0) {
-      delay(200);
-    }
-    if (time(nullptr) < 1'700'000'000L) {
-      Serial.println(F("ERROR: no se pudo sincronizar el reloj para HTTPS"));
-      showOnLcd("Error de reloj", "Revisa Internet");
-      return false;
-    }
-    Serial.println(F("HTTPS: reloj y certificado listos."));
+    if (!synchronizeClockForHttps()) return false;
   }
   return true;
 }
@@ -203,6 +373,10 @@ String postClassify(camera_fb_t* frame, int& statusCode) {
   const String url = String(RECI_API_BASE_URL) + "/api/vision/classify";
   ReciHttpClient client(url);
   HTTPClient http;
+  // Render puede estar dormido y la primera inferencia tarda bastante mas
+  // que el timeout predeterminado de HTTPClient.
+  http.setConnectTimeout(kVisionConnectTimeoutMs);
+  http.setTimeout(kVisionHttpTimeoutMs);
   String prefix = String("--") + kBoundary + "\r\n";
   prefix += "Content-Disposition: form-data; name=\"record_event\"\r\n\r\nfalse\r\n--";
   prefix += kBoundary;
@@ -281,6 +455,8 @@ String recordRecycleEvent(const String& material, float confidence) {
   const String url = String(RECI_API_BASE_URL) + "/api/events/recycle";
   ReciHttpClient client(url);
   HTTPClient http;
+  http.setConnectTimeout(kRecycleConnectTimeoutMs);
+  http.setTimeout(kRecycleHttpTimeoutMs);
   if (!http.begin(client.get(), url)) return "";
 
   JsonDocument body;
@@ -292,9 +468,12 @@ String recordRecycleEvent(const String& material, float confidence) {
 
   http.addHeader("Authorization", String("Bearer ") + RECI_ROBOT_API_KEY);
   http.addHeader("Content-Type", "application/json");
+  Serial.println(F("RECYCLE: registrando evento en el backend..."));
   const int statusCode = http.POST(payload);
   const String responseBody = statusCode > 0 ? http.getString() : "";
   http.end();
+
+  Serial.printf("RECYCLE: backend respondio %d\n", statusCode);
 
   if (statusCode != HTTP_CODE_CREATED) {
     Serial.printf("ERROR: /events/recycle respondio %d\n", statusCode);
@@ -319,8 +498,7 @@ void classifyResidue() {
   Serial.println(F("--- CLASIFICANDO RESIDUO: 3 fotos ---"));
   Serial.print(F("Politica de votacion: "));
   Serial.println(kVotingPolicy);
-  sendMega("CMD:FACE:thinking");
-  showOnLcd("Analizando residuo", "No lo retires");
+  sendMega("@A");
   MaterialVotes providerVotes;
   MaterialVotes localVotes;
   bool capturesComplete = true;
@@ -336,7 +514,9 @@ void classifyResidue() {
     const String body = postClassify(frame, statusCode);
     esp_camera_fb_return(frame);
     if (statusCode != HTTP_CODE_OK) {
-      Serial.printf("ERROR: foto %u /vision/classify respondio %d\n", index + 1, statusCode);
+      const String error = statusCode < 0 ? HTTPClient::errorToString(statusCode) : "HTTP";
+      Serial.printf("ERROR: foto %u /vision/classify respondio %d (%s)\n",
+                    index + 1, statusCode, error.c_str());
       capturesComplete = false;
       continue;
     }
@@ -440,8 +620,7 @@ void classifyResidue() {
     Serial.print(F("Resultado: DESCONOCIDO ("));
     Serial.print(decision.source);
     Serial.println(')');
-    sendMega("CMD:FACE:confused");
-    showOnLcd("No estoy seguro", "Intenta de nuevo");
+    sendMega("@U");
     return;
   }
 
@@ -468,25 +647,40 @@ void classifyResidue() {
   const float winningConfidence = winningCount > 0
       ? winningConfidenceSum / winningCount
       : 0.0F;
+
+  // La operación física ocurre primero. Si el Mega no confirma que aceptó
+  // abrir la tapa, no registramos el evento ni entregamos puntos falsos.
+  if (!abrirCompuertaConfirmada(decision.material)) {
+    Serial.println(F("ERROR: reciclaje cancelado; la compuerta no abrio."));
+    sendMega("@E");
+    return;
+  }
+
   const String claimCode = recordRecycleEvent(decision.material, winningConfidence);
 
-  sendMega("CMD:CLASSIFY:" + decision.material);
-  sendMega("CMD:FACE:happy");
-
   if (claimCode.length() > 0) {
-    sendMega("CMD:QR:" + claimCode);
-    showOnLcd(decision.material == "vidrio" ? "VIDRIO" : "PLASTICO", "Escanea el QR");
+    Serial.print(F("RECYCLE: claim_code disponible en backend: "));
+    Serial.println(claimCode);
+    // Fuera de una llamada, el backend emite un claim_code de un solo uso.
+    // Se transmite completo al Mega para que la OLED dibuje el QR real.
+    // Solo si el código viniera inválido conservamos el aviso de abrir la app.
+    if (!sendClaimCodeToMega(claimCode)) sendMega("@N");
   } else if (lastRecycleLinkedToCall) {
-    showOnLcd(decision.material == "vidrio" ? "VIDRIO" : "PLASTICO", "10 pts agregados");
+    sendMega("@L");
   } else {
-    showOnLcd(decision.material == "vidrio" ? "VIDRIO" : "PLASTICO", "Compuerta abierta");
+    sendMega("@O");
   }
 }
 
 void readClassificationRequest() {
   while (Serial.available() > 0) {
     const char command = static_cast<char>(Serial.read());
-    if (command == 'c' || command == 'C') classifyResidue();
+    if (command == 'c' || command == 'C') {
+      classifyResidue();
+    } else if (command == 't' || command == 'T') {
+      sendMega("@T");
+      Serial.println(F("PULSO: prueba enviada al Mega."));
+    }
   }
 }
 
@@ -494,24 +688,37 @@ void readClassificationRequest() {
 
 void setup() {
   Serial.begin(115200);
-  mega.begin(kMegaBaud, SERIAL_8N1, kMegaRxPin, kMegaTxPin);
+  Serial.println(F("MODO: GPIO14 envia pulsos al Mega D17."));
+  // El regreso Mega D16 -> GPIO13 también usa pulsos. Ya no iniciamos UART:
+  // GPIO13 queda como entrada digital detrás del divisor 1k/2k.
+  pinMode(kMegaRxPin, INPUT);
+  pinMode(kMegaPulsePin, OUTPUT);
+  digitalWrite(kMegaPulsePin, LOW);
   pinMode(kFlashLedPin, OUTPUT);
   digitalWrite(kFlashLedPin, LOW);
   delay(500);
 
   Serial.print(F("Firmware de votacion: "));
   Serial.println(kVotingPolicy);
-
-  showOnLcd("Hola, soy Reci", "Preparando camara");
   if (!startCamera()) return;
   if (!connectWiFi()) return;
   dispatcher.begin();
-  showOnLcd("Hola, soy Reci", "Envia C para leer");
-  sendMega("CMD:FACE:idle");
+  sendMega("@R");
+  servicesReady = true;
   Serial.println(F("Listo. Envia C por el Monitor Serial para clasificar un residuo."));
 }
 
 void loop() {
+  // Sin hora válida no se verifica TLS; no aceptamos llamadas ni reciclajes
+  // hasta que el arranque HTTPS haya terminado correctamente.
+  if (!servicesReady) {
+    delay(50);
+    return;
+  }
   readClassificationRequest();
   dispatcher.tick();
+  if (dispatcher.takeRecycleRequest()) {
+    classifyResidue();
+    dispatcher.finishRecycleAttempt();
+  }
 }

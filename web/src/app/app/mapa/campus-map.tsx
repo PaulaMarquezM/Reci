@@ -97,6 +97,32 @@ export default function CampusMap({
     }
   }, [])
 
+  // Realtime actualiza al instante cuando la publicación de Supabase está
+  // activa. Este sondeo pequeño es el respaldo para que el mapa también se
+  // actualice en un celular aunque Realtime tarde en conectar o no esté
+  // habilitado en el proyecto.
+  useEffect(() => {
+    let activo = true
+
+    async function refreshPosition() {
+      try {
+        const response = await fetch('/api/robot/current', { cache: 'no-store' })
+        if (!response.ok) return
+        const data = await response.json() as { position?: RobotPosition | null }
+        if (activo && data.position) setPosition(data.position)
+      } catch {
+        // La posición inicial y Realtime siguen disponibles si el sondeo falla.
+      }
+    }
+
+    void refreshPosition()
+    const interval = window.setInterval(() => void refreshPosition(), 3000)
+    return () => {
+      activo = false
+      window.clearInterval(interval)
+    }
+  }, [])
+
   const initials = (greetingName ?? 'PM')
     .split(' ')
     .map((w) => w[0])
