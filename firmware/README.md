@@ -7,7 +7,7 @@ Código de los dos microcontroladores del robot:
 Gestiona toda la lógica de bajo nivel:
 
 - **Movimiento**: 4 motorreductores TT via 2 drivers L298N.
-- **Compuertas**: 2 servomotores SG5010 (una por compartimento vidrio/plástico).
+- **Compuerta**: 1 servomotor en D3 que inclina la bandeja (izquierda = plástico, derecha = vidrio).
 - **Obstáculos**: sensores ultrasónicos HC-SR04 — parada automática a ≤ 20 cm.
 - **Interfaz**: pantalla OLED 0.96" I2C con animaciones de estado.
 - **Comunicación**: Serial/UART con el ESP32-CAM para recibir la decisión de clasificación.
@@ -121,9 +121,10 @@ está conectada al Mega por SDA=20 y SCL=21, normalmente en la dirección `0x3C`
 Si la OLED no responde, el robot sigue deteniéndose y funcionando; solo informa
 el aviso por el Monitor Serial.
 
-La misma ruta demo también integra las compuertas ya calibradas: `VIDRIO` o
-`PLASTICO` desde el Monitor Serial abren solo una tapa durante 2 s y la cierran
-automáticamente. Las órdenes futuras `CMD:CLASSIFY:vidrio` y
+La misma ruta demo también integra la compuerta única: un solo servo en D3
+inclina la bandeja. `PLASTICO` la gira a la izquierda y `VIDRIO` a la derecha
+durante 2 s, y luego vuelve al centro automáticamente. Los ángulos se calibran
+con `ReciServosTest.ino`. Las órdenes futuras `CMD:CLASSIFY:vidrio` y
 `CMD:CLASSIFY:plastico` usan el mismo comportamiento al llegar desde la
 ESP32-CAM. Por seguridad, no abre una tapa mientras RECI está en movimiento.
 Además, ningún movimiento manual o automático puede comenzar con una tapa

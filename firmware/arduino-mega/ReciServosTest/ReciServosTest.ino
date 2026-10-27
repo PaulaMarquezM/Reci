@@ -1,92 +1,71 @@
 // ============================================================
-// RECI · Prueba segura de compuertas
+// RECI · Prueba segura de la compuerta única
 // Arduino Mega 2560
-// 1 servo MG90S para VIDRIO
-// 1 servo original para PLÁSTICO
+// 1 servo en D3 que inclina la bandeja:
+//   plástico -> gira a la IZQUIERDA
+//   vidrio   -> gira a la DERECHA
 //
 // Monitor Serial a 9600 baudios:
-// V = abrir vidrio
-// P = abrir plástico
-// C = cerrar ambas compuertas
+// P = plástico (izquierda)
+// V = vidrio (derecha)
+// C = volver al centro
+// Un número entre 0 y 180 + Enter = mover a ese ángulo para calibrar
 // ============================================================
 
 #include <Servo.h>
 
 namespace {
 
-constexpr uint8_t kServoVidrioPin = 3;
-constexpr uint8_t kServoPlasticoPin = 4;
+constexpr uint8_t kServoCompuertaPin = 3;
 
-// Calibración física
-constexpr uint8_t kVidrioCerrado = 45;
-constexpr uint8_t kVidrioAbierto = 166;
-
-constexpr uint8_t kPlasticoCerrado = 30;
-constexpr uint8_t kPlasticoAbierto = 180;
+// Calibración física. Copia los valores finales a ReciRutaDemo.ino.
+constexpr uint8_t kServoCentro = 90;
+constexpr uint8_t kServoIzquierda = 30;
+constexpr uint8_t kServoDerecha = 150;
 
 constexpr unsigned long kTiempoAbiertoMs = 2000UL;
 constexpr unsigned long kSerialBaud = 9600UL;
 
-// Rango de pulsos del MG90S
-constexpr int kMg90sPulsoMinUs = 600;
-constexpr int kMg90sPulsoMaxUs = 2300;
+Servo servoCompuerta;
 
-Servo servoVidrio;
-Servo servoPlastico;
+bool compuertaInclinada = false;
+unsigned long volverAlCentroEn = 0;
 
-bool hayCompuertaAbierta = false;
-unsigned long cerrarEn = 0;
-
-void cerrarCompuertas() {
-  servoVidrio.write(kVidrioCerrado);
-  servoPlastico.write(kPlasticoCerrado);
-
-  hayCompuertaAbierta = false;
-
-  Serial.println(F("SERVOS: compuertas cerradas."));
+void volverAlCentro() {
+  servoCompuerta.write(kServoCentro);
+  compuertaInclinada = false;
+  Serial.println(F("SERVO: centro."));
 }
 
-void abrirVidrio() {
-  // Mantener plástico cerrado
-  servoPlastico.write(kPlasticoCerrado);
-
-  // Abrir vidrio con MG90S
-  servoVidrio.write(kVidrioAbierto);
-
-  hayCompuertaAbierta = true;
-  cerrarEn = millis() + kTiempoAbiertoMs;
-
-  Serial.println(F("VIDRIO: abierto por 2 segundos."));
-}
-
-void abrirPlastico() {
-  // Mantener vidrio cerrado
-  servoVidrio.write(kVidrioCerrado);
-
-  // Abrir plástico con servo original
-  servoPlastico.write(kPlasticoAbierto);
-
-  hayCompuertaAbierta = true;
-  cerrarEn = millis() + kTiempoAbiertoMs;
-
-  Serial.println(F("PLASTICO: abierto por 2 segundos."));
+void inclinar(uint8_t angulo, const __FlashStringHelper* mensaje) {
+  servoCompuerta.write(angulo);
+  compuertaInclinada = true;
+  volverAlCentroEn = millis() + kTiempoAbiertoMs;
+  Serial.println(mensaje);
 }
 
 void leerMonitorSerial() {
-  while (Serial.available() > 0) {
-    char comando = Serial.read();
+  if (Serial.available() == 0) return;
 
-    if (comando == 'V' || comando == 'v') {
-      abrirVidrio();
+  const char primero = static_cast<char>(Serial.peek());
+  if (isDigit(primero)) {
+    const int angulo = Serial.parseInt();
+    if (angulo >= 0 && angulo <= 180) {
+      servoCompuerta.write(angulo);
+      compuertaInclinada = false;
+      Serial.print(F("CALIBRACION: angulo "));
+      Serial.println(angulo);
     }
+    return;
+  }
 
-    if (comando == 'P' || comando == 'p') {
-      abrirPlastico();
-    }
-
-    if (comando == 'C' || comando == 'c') {
-      cerrarCompuertas();
-    }
+  const char comando = static_cast<char>(Serial.read());
+  if (comando == 'P' || comando == 'p') {
+    inclinar(kServoIzquierda, F("PLASTICO: izquierda por 2 segundos."));
+  } else if (comando == 'V' || comando == 'v') {
+    inclinar(kServoDerecha, F("VIDRIO: derecha por 2 segundos."));
+  } else if (comando == 'C' || comando == 'c') {
+    volverAlCentro();
   }
 }
 
@@ -95,30 +74,19 @@ void leerMonitorSerial() {
 void setup() {
   Serial.begin(kSerialBaud);
 
-  // MG90S conectado al pin 3
-  servoVidrio.attach(
-    kServoVidrioPin,
-    kMg90sPulsoMinUs,
-    kMg90sPulsoMaxUs
-  );
+  servoCompuerta.attach(kServoCompuertaPin);
+  volverAlCentro();
 
-  // Servo original conectado al pin 4
-  servoPlastico.attach(kServoPlasticoPin);
-
-  cerrarCompuertas();
-
-  Serial.println(F("RECI: prueba de servos lista."));
-  Serial.println(F("Escribe V para vidrio."));
-  Serial.println(F("Escribe P para plastico."));
-  Serial.println(F("Escribe C para cerrar."));
-  Serial.println(F("MG90S vidrio: cerrado 45, abierto 166."));
+  Serial.println(F("RECI: prueba de compuerta unica lista."));
+  Serial.println(F("P = plastico (izquierda), V = vidrio (derecha), C = centro."));
+  Serial.println(F("Escribe un angulo 0-180 para calibrar."));
 }
 
 void loop() {
   leerMonitorSerial();
 
-  if (hayCompuertaAbierta &&
-      static_cast<long>(millis() - cerrarEn) >= 0) {
-    cerrarCompuertas();
+  if (compuertaInclinada &&
+      static_cast<long>(millis() - volverAlCentroEn) >= 0) {
+    volverAlCentro();
   }
 }

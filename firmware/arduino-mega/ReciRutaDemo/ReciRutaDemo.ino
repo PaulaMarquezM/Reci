@@ -36,19 +36,17 @@ constexpr uint8_t kDerIn4 = 13;
 // opción. Solo afecta al L298N controlado por D5-D8.
 constexpr bool kInvertirLadoIzquierdo = true;
 
-// Compuertas. Valores calibrados físicamente en la prueba de servos.
-constexpr uint8_t kServoVidrioPin = 3;
-constexpr uint8_t kServoPlasticoPin = 4;
-constexpr uint8_t kVidrioCerrado = 45;
-// -90 en un uint8_t se convierte en 166; se expresa así para conservar
-// exactamente el movimiento calibrado, sin cambiarlo.
-constexpr uint8_t kVidrioAbierto = 166;
-constexpr uint8_t kPlasticoCerrado = 30;
-constexpr uint8_t kPlasticoAbierto = 180;
+// Compuerta única: un solo servo en D3 inclina la bandeja hacia un lado.
+// Plástico gira a la IZQUIERDA y vidrio a la DERECHA; luego vuelve al centro.
+// CALIBRACION: si en el robot real gira al lado contrario, intercambia
+// kServoIzquierda y kServoDerecha. Ajusta los ángulos con ReciServosTest.
+constexpr uint8_t kServoCompuertaPin = 3;
+constexpr uint8_t kServoCentro = 90;
+constexpr uint8_t kServoIzquierda = 30;
+constexpr uint8_t kServoDerecha = 150;
 constexpr unsigned long kCompuertaAbiertaMs = 2000UL;
 
-Servo servoVidrio;
-Servo servoPlastico;
+Servo servoCompuerta;
 
 // OLED SSD1306 128x64 por I2C: Mega SDA=20, SCL=21.
 constexpr uint8_t kDireccionOled = 0x3C;
@@ -127,6 +125,10 @@ constexpr uint8_t kMegaTx2Pin = 16;
 // Mega mide pulsos HIGH de varios cientos de milisegundos. Así una trama
 // corrupta no puede convertirse en una orden del robot.
 constexpr uint8_t kPulsoEspPin = 17;
+// false = sin ESP32-CAM: la cámara de la compu (camara-pc/) manda las mismas
+// órdenes por USB. Con D17 desconectado el pin queda flotando y el ruido se
+// leería como órdenes falsas (incluso rutas), así que no se escucha.
+constexpr bool kEsp32CamConectada = false;
 constexpr unsigned long kIgnorarPulsosAlArrancarMs = 3500UL;
 constexpr unsigned long kToleranciaPulsoMs = 120UL;
 // Un cable largo y la conmutacion de motores/servos pueden producir caidas
@@ -429,8 +431,7 @@ void informarPunto(const __FlashStringHelper* prefijo, Punto punto) {
 }
 
 void cerrarCompuertas() {
-  servoVidrio.write(kVidrioCerrado);
-  servoPlastico.write(kPlasticoCerrado);
+  servoCompuerta.write(kServoCentro);
   compuertaActiva = CompuertaActiva::Ninguna;
 }
 
@@ -448,15 +449,13 @@ bool abrirCompuerta(CompuertaActiva solicitada) {
   }
 
   if (solicitada == CompuertaActiva::Vidrio) {
-    servoPlastico.write(kPlasticoCerrado);
-    servoVidrio.write(kVidrioAbierto);
-    mostrarLcd("Deposita vidrio", "Tapa abierta");
-    informar(F("COMPUERTA: vidrio abierta."));
+    servoCompuerta.write(kServoDerecha);
+    mostrarLcd("Vidrio", "Girando derecha");
+    informar(F("COMPUERTA: vidrio, gira a la derecha."));
   } else {
-    servoVidrio.write(kVidrioCerrado);
-    servoPlastico.write(kPlasticoAbierto);
-    mostrarLcd("Deposita plastico", "Tapa abierta");
-    informar(F("COMPUERTA: plastico abierta."));
+    servoCompuerta.write(kServoIzquierda);
+    mostrarLcd("Plastico", "Girando izquierda");
+    informar(F("COMPUERTA: plastico, gira a la izquierda."));
   }
 
   compuertaActiva = solicitada;
@@ -1232,13 +1231,11 @@ void setup() {
   Serial.println(F("PASO 3: sensores configurados."));
   diagnosticarLineasI2c(F("despues de sensores"));
 
-  Serial.println(F("PASO 4: iniciando servos."));
-  servoVidrio.attach(kServoVidrioPin);
-  diagnosticarLineasI2c(F("despues de servo vidrio"));
-  servoPlastico.attach(kServoPlasticoPin);
-  diagnosticarLineasI2c(F("despues de servo plastico"));
+  Serial.println(F("PASO 4: iniciando servo de compuerta."));
+  servoCompuerta.attach(kServoCompuertaPin);
+  diagnosticarLineasI2c(F("despues de servo compuerta"));
   cerrarCompuertas();
-  Serial.println(F("PASO 5: servos cerrados."));
+  Serial.println(F("PASO 5: servo en el centro."));
   diagnosticarLineasI2c(F("despues de cerrar servos"));
 
   Serial.println(F("PASO 6: iniciando bus I2C."));
@@ -1285,8 +1282,10 @@ void setup() {
 void loop() {
   leerSerial(Serial, entradaUsb);  // Pruebas por USB / Monitor Serial.
   actualizarPulsoSalidaAEsp();      // Mega D16 -> ESP GPIO13, sin bloquear.
-  actualizarPulsoEsp();             // ESP GPIO14 -> Mega D17, sin UART.
-  actualizarRecepcionCodigoQr();    // Completa o cancela un QR incompleto.
+  if (kEsp32CamConectada) {
+    actualizarPulsoEsp();           // ESP GPIO14 -> Mega D17, sin UART.
+    actualizarRecepcionCodigoQr();  // Completa o cancela un QR incompleto.
+  }
   actualizarRuta();
   actualizarPresencia();
   actualizarCompuerta();
