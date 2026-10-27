@@ -37,7 +37,7 @@ constexpr uint8_t kDerIn4 = 13;
 // cada par, escribe MOTORES en el Monitor Serial (con las ruedas levantadas).
 constexpr bool kInvertirIzqA = true;   // D5/D6
 constexpr bool kInvertirIzqB = true;   // D7/D8
-constexpr bool kInvertirDerA = true;   // D9/D10
+constexpr bool kInvertirDerA = false;  // D9/D10
 constexpr bool kInvertirDerB = true;   // D11/D13
 constexpr unsigned long kPruebaMotorMs = 2000UL;
 
