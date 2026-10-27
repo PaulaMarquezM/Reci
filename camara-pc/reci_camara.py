@@ -14,6 +14,7 @@ Teclas (con la ventana de la cámara activa):
   Q o ESC      salir
 """
 
+import csv
 import glob
 import os
 import queue
@@ -26,6 +27,10 @@ import requests
 import serial
 
 AQUI = Path(__file__).resolve().parent
+# Cada lectura queda registrada aquí para las métricas del informe técnico.
+METRICAS_CSV = AQUI / "metricas.csv"
+COLUMNAS_METRICAS = ["fecha", "foto1", "foto2", "foto3", "resultado", "confianza",
+                     "latencia_fotos_ms", "latencia_total_ms", "compuerta_confirmada"]
 
 MEGA_BAUD = 9600
 # Al abrir el puerto USB el Mega se reinicia; esperamos a que termine el setup().
@@ -186,21 +191,29 @@ class Reci:
     def _clasificar(self):
         with self._clasificando:
             print(f"--- CLASIFICANDO RESIDUO: {FOTOS_POR_LECTURA} fotos ---")
+            inicio = time.monotonic()
             self.mega.enviar("@A")
             votos = {"plastico": [], "vidrio": []}
+            por_foto = []
+            latencias_ms = []
             for numero in range(1, FOTOS_POR_LECTURA + 1):
                 jpg = self.foto_jpg()
                 if jpg is None:
                     print(f"ERROR: no se pudo capturar la foto {numero}")
+                    por_foto.append("sin_foto")
                     continue
+                inicio_foto = time.monotonic()
                 try:
                     resultado = self.cloud.clasificar(jpg)
                 except requests.RequestException as error:
                     print(f"ERROR: foto {numero} /vision/classify: {error}")
+                    por_foto.append("error")
                     continue
+                latencias_ms.append((time.monotonic() - inicio_foto) * 1000)
                 material = resultado.get("material", "desconocido")
                 confianza = float(resultado.get("confidence") or 0.0)
                 print(f"foto {numero}: {material} ({confianza:.2f})")
+                por_foto.append(material)
                 if material in votos:
                     votos[material].append(confianza)
                 time.sleep(SEPARACION_FOTOS_S)
@@ -209,14 +222,31 @@ class Reci:
             if material is None:
                 print("Resultado final: desconocido")
                 self.mega.enviar("@U")
+                self._guardar_metrica(por_foto, "desconocido", 0.0, latencias_ms, inicio, False)
                 return
 
             confianza = sum(votos[material]) / len(votos[material])
             print(f"Resultado final: {material} ({confianza:.2f})")
-            if not self._abrir_compuerta(material):
+            confirmada = self._abrir_compuerta(material)
+            self._guardar_metrica(por_foto, material, confianza, latencias_ms, inicio, confirmada)
+            if not confirmada:
                 print("ERROR: el Mega no confirmó la compuerta; no se registran puntos.")
                 return
             self._registrar(material, confianza)
+
+    def _guardar_metrica(self, por_foto, material, confianza, latencias_ms, inicio, confirmada):
+        total_ms = (time.monotonic() - inicio) * 1000
+        promedio_ms = sum(latencias_ms) / len(latencias_ms) if latencias_ms else 0
+        nuevo = not METRICAS_CSV.exists()
+        with METRICAS_CSV.open("a", newline="", encoding="utf-8") as archivo:
+            escritor = csv.writer(archivo)
+            if nuevo:
+                escritor.writerow(COLUMNAS_METRICAS)
+            fotos = (por_foto + ["", "", ""])[:3]
+            escritor.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), *fotos, material,
+                               f"{confianza:.3f}", f"{promedio_ms:.0f}", f"{total_ms:.0f}",
+                               "si" if confirmada else "no"])
+        print(f"METRICAS: {material} en {total_ms / 1000:.1f} s (guardado en metricas.csv)")
 
     def _abrir_compuerta(self, material):
         """Manda @P/@V y espera a que el Mega confirme que movió el servo."""
