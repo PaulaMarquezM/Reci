@@ -33,5 +33,10 @@ En el Mega debe estar cargado `ReciRutaDemo.ino` con
    - **C** o **ESPACIO**: clasificar (3 fotos; con 2 iguales gira el servo).
    - **Q** o **ESC**: salir.
 
-Cuando el PIR detecta a alguien, o cuando Reci llega a un punto llamado desde
-la app, la captura se hace sola a los 5 segundos.
+En uso normal no se toca nada: el ultrasónico interno (TRIG D24 / ECHO D25)
+detecta la botella en el hueco y el Mega avisa `BOTELLA: detectada`; ahí la
+compu toma las fotos sola. El PIR solo saluda. Si alguien llamó a Reci desde
+la app, el primer reciclaje en los 2 minutos siguientes suma los puntos a esa
+cuenta; si no, aparece el QR para reclamarlos.
+
+Las lecturas quedan en `metricas.csv` para el informe técnico.

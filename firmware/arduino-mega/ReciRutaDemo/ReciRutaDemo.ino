@@ -85,6 +85,21 @@ constexpr unsigned long kEchoTimeoutUs = 25000UL;
 // de continuar solo. Evita que una lectura aislada haga arrancar a RECI.
 constexpr unsigned long kFrenteLibreAntesDeReanudarMs = 1000UL;
 
+// HC-SR04 interno (el que estaba al costado): mira el hueco donde se deja la
+// botella. Con RECI detenido, un objeto que se queda cerca dispara la foto.
+// CALIBRACION: mide con BOTELLA? a qué distancia queda la botella y ajusta
+// kDistanciaBotellaCm un poco por encima de ese valor.
+constexpr uint8_t kTrigBotella = 24;
+constexpr uint8_t kEchoBotella = 25;
+constexpr long kDistanciaBotellaCm = 15;
+// Por debajo de ~3 cm el HC-SR04 no mide bien: se descarta como ruido.
+constexpr long kDistanciaBotellaMinCm = 3;
+constexpr unsigned long kRevisionBotellaMs = 150UL;
+// La botella debe quedarse quieta este tiempo; una mano que pasa no cuenta.
+constexpr unsigned long kBotellaEstableMs = 800UL;
+// Tras una lectura, el hueco debe vaciarse y esperar esto antes de otra.
+constexpr unsigned long kEsperaEntreBotellasMs = 8000UL;
+
 // PIR de bienvenida: el esquema de RECI conecta OUT al pin 28 del Mega.
 // Solo genera un evento de presencia cuando el robot está detenido; nunca
 // inicia un movimiento ni concede puntos por sí solo.
@@ -195,6 +210,10 @@ unsigned long tiempoRestantePausaMs = 0;
 unsigned long frenteLibreDesde = 0;
 unsigned long proximaPresenciaPermitidaEn = 0;
 bool pirListoParaNuevoEvento = false;
+unsigned long ultimoChequeoBotella = 0;
+unsigned long botellaPresenteDesde = 0;
+unsigned long proximaBotellaPermitidaEn = 0;
+bool huecoVacioDesdeUltimaBotella = true;
 CompuertaActiva compuertaActiva = CompuertaActiva::Ninguna;
 unsigned long cerrarCompuertaEn = 0;
 Punto destinoPendienteCompuerta = Punto::Desconocido;
@@ -602,16 +621,67 @@ void actualizarPresencia() {
   mostrarLcd("Hola, soy RECI", "Recicla aqui");
 }
 
-long distanciaFrontalCm() {
-  digitalWrite(kTrigFrontal, LOW);
+long medirDistanciaCm(uint8_t trig, uint8_t echo) {
+  digitalWrite(trig, LOW);
   delayMicroseconds(2);
-  digitalWrite(kTrigFrontal, HIGH);
+  digitalWrite(trig, HIGH);
   delayMicroseconds(10);
-  digitalWrite(kTrigFrontal, LOW);
+  digitalWrite(trig, LOW);
 
-  const unsigned long duracion = pulseIn(kEchoFrontal, HIGH, kEchoTimeoutUs);
+  const unsigned long duracion = pulseIn(echo, HIGH, kEchoTimeoutUs);
   if (duracion == 0) return -1;
   return static_cast<long>(duracion * 0.0343F / 2.0F);
+}
+
+long distanciaFrontalCm() {
+  return medirDistanciaCm(kTrigFrontal, kEchoFrontal);
+}
+
+long distanciaBotellaCm() {
+  return medirDistanciaCm(kTrigBotella, kEchoBotella);
+}
+
+// Con RECI quieto y la compuerta al centro, avisa por USB "BOTELLA:
+// detectada" cuando un objeto se queda en el hueco. La compu toma las fotos
+// al leer esa línea. Después exige que el hueco se vacíe antes de otra.
+void actualizarBotella() {
+  // En ruta no se mide: pulseIn bloquea hasta 25 ms y el freno frontal
+  // tiene prioridad.
+  if (modo != Modo::Detenido) {
+    botellaPresenteDesde = 0;
+    return;
+  }
+  const unsigned long ahora = millis();
+  if (ahora - ultimoChequeoBotella < kRevisionBotellaMs) return;
+  ultimoChequeoBotella = ahora;
+
+  const long distancia = distanciaBotellaCm();
+  const bool hayBotella = distancia >= kDistanciaBotellaMinCm &&
+                          distancia <= kDistanciaBotellaCm;
+  if (!hayBotella) {
+    botellaPresenteDesde = 0;
+    huecoVacioDesdeUltimaBotella = true;
+    return;
+  }
+
+  if (compuertaActiva != CompuertaActiva::Ninguna) return;
+  if (!huecoVacioDesdeUltimaBotella) return;
+  if (static_cast<long>(ahora - proximaBotellaPermitidaEn) < 0) return;
+
+  if (botellaPresenteDesde == 0) {
+    botellaPresenteDesde = ahora;
+    return;
+  }
+  if (ahora - botellaPresenteDesde < kBotellaEstableMs) return;
+
+  botellaPresenteDesde = 0;
+  huecoVacioDesdeUltimaBotella = false;
+  proximaBotellaPermitidaEn = ahora + kEsperaEntreBotellasMs;
+  Serial.print(F("RECI: BOTELLA: detectada a "));
+  Serial.print(distancia);
+  Serial.println(F(" cm"));
+  mostrarCara(CaraReci::Movimiento);
+  mostrarLcd("Analizando residuo", "No lo retires");
 }
 
 bool hayObstaculoFrontal() {
@@ -1006,6 +1076,15 @@ void procesarComando(char* entrada) {
   } else if (es(entrada, "STATUS")) {
     informarPunto(F("Posicion: "), puntoActual);
     informarPunto(F("Destino: "), destino);
+  } else if (es(entrada, "BOTELLA?")) {
+    const long distancia = distanciaBotellaCm();
+    Serial.print(F("RECI: sensor de botella = "));
+    if (distancia < 0) {
+      Serial.println(F("sin lectura. Revisa TRIG D24 / ECHO D25 / 5V / GND."));
+    } else {
+      Serial.print(distancia);
+      Serial.println(F(" cm"));
+    }
   } else if (es(entrada, "MOTORES")) {
     if (modo != Modo::Detenido) {
       informar(F("Primero detén a RECI con S."));
@@ -1014,7 +1093,7 @@ void procesarComando(char* entrada) {
     if (!permitirMovimientoManual()) return;
     probarMotores();
   } else if (es(entrada, "HELP")) {
-    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES | V14 TRACE16 | STATUS"));
+    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? | V14 TRACE16 | STATUS"));
   } else {
     informar(F("ERROR: comando invalido. Escribe HELP."));
   }
@@ -1260,6 +1339,9 @@ void setup() {
   pinMode(kTrigFrontal, OUTPUT);
   pinMode(kEchoFrontal, INPUT);
   digitalWrite(kTrigFrontal, LOW);
+  pinMode(kTrigBotella, OUTPUT);
+  pinMode(kEchoBotella, INPUT);
+  digitalWrite(kTrigBotella, LOW);
   pinMode(kPirPin, INPUT);
   proximaPresenciaPermitidaEn = millis() + kPirWarmupMs;
   Serial.println(F("PASO 3: sensores configurados."));
@@ -1322,5 +1404,6 @@ void loop() {
   }
   actualizarRuta();
   actualizarPresencia();
+  actualizarBotella();
   actualizarCompuerta();
 }

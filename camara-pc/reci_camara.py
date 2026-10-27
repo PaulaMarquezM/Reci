@@ -5,12 +5,16 @@ compu: toma las fotos con la webcam, las clasifica en Reci Cloud y le manda
 las órdenes al Arduino Mega por el cable USB (las mismas órdenes compactas
 @A, @P, @V, @Q:... que el Mega ya entiende).
 
+La foto se toma sola cuando el Mega avisa "BOTELLA: detectada" (el
+ultrasónico interno vio un objeto quieto en el hueco).
+
 También atiende las llamadas de la app: consulta /api/robot/calls/next cada
 3 s, manda P1/P2 al Mega y, cuando el Mega avisa que llegó, marca la llamada
-como resuelta y saluda a la persona en la LCD.
+como resuelta y saluda a la persona en la LCD. El primer reciclaje en los
+2 minutos siguientes se acredita a quien llamó.
 
 Teclas (con la ventana de la cámara activa):
-  C o ESPACIO  clasificar el residuo que está frente a la cámara
+  C o ESPACIO  clasificar a mano (respaldo si el sensor no detecta)
   Q o ESC      salir
 """
 
@@ -42,8 +46,6 @@ SEPARACION_FOTOS_S = 0.35
 ESPERA_COMPUERTA_S = 3.0
 # Una llamada recién atendida acredita el primer reciclaje a esa persona.
 CONTEXTO_LLAMADA_S = 120.0
-# Tras la presencia del PIR se da tiempo a acomodar la botella.
-PREPARACION_BOTELLA_S = 5.0
 TIMEOUT_VISION_S = 60
 TIMEOUT_HTTP_S = 15
 
@@ -162,7 +164,6 @@ class Reci:
         self.llamada_activa = None
         self.contexto_reciclaje = {}
         self.contexto_expira_en = 0.0
-        self.capturar_en = None
 
     # ---------------- cámara ----------------
 
@@ -305,7 +306,6 @@ class Reci:
                 continue
 
             self.llamada_activa = {**llamada, "ruta": ruta}
-            self.capturar_en = None
             self.mega.enviar(ruta)
             self.cloud.actualizar_llamada(llamada["id"], "in_progress")
             self.cloud.reportar_posicion({"point_id": llamada["point_id"], "status": "moving"})
@@ -318,8 +318,8 @@ class Reci:
             llamada = self.llamada_activa
             if llamada and f"Llegada estimada: {llamada['ruta']}" in linea:
                 self._llegada(llamada)
-            elif "PRESENCIA" in linea and not self._clasificando.locked():
-                self._programar_captura()
+            elif "BOTELLA: detectada" in linea:
+                self.clasificar_en_segundo_plano()
 
     def _llegada(self, llamada):
         self.cloud.actualizar_llamada(llamada["id"], "resolved")
@@ -329,19 +329,6 @@ class Reci:
         self.contexto_reciclaje = {"call_id": llamada["id"], "robot_point_id": llamada["point_id"]}
         self.contexto_expira_en = time.monotonic() + CONTEXTO_LLAMADA_S
         self.llamada_activa = None
-        self._programar_captura()
-
-    def _programar_captura(self):
-        if self.capturar_en is not None:
-            return
-        self.mega.enviar("@B")
-        self.capturar_en = time.monotonic() + PREPARACION_BOTELLA_S
-        print(f"RECYCLE: captura automática en {PREPARACION_BOTELLA_S:.0f} s.")
-
-    def revisar_captura_programada(self):
-        if self.capturar_en is not None and time.monotonic() >= self.capturar_en:
-            self.capturar_en = None
-            self.clasificar_en_segundo_plano()
 
 
 def main():
@@ -369,7 +356,6 @@ def main():
             cuadro = reci.leer_cuadro()
             if cuadro is not None:
                 cv2.imshow("Reci · camara", cuadro)
-            reci.revisar_captura_programada()
             tecla = cv2.waitKey(30) & 0xFF
             if tecla in (ord("c"), ord("C"), ord(" ")):
                 reci.clasificar_en_segundo_plano()
