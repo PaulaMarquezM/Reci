@@ -32,9 +32,14 @@ constexpr uint8_t kDerIn2 = 10;
 constexpr uint8_t kDerIn3 = 11;
 constexpr uint8_t kDerIn4 = 13;
 
-// Si los dos motores del lado izquierdo giran al revés con F, cambia esta
-// opción. Solo afecta al L298N controlado por D5-D8.
-constexpr bool kInvertirLadoIzquierdo = true;
+// Sentido de cada motor por separado. Si con F una rueda gira hacia atrás,
+// cambia SOLO la constante de ese par de pines. Para saber qué rueda mueve
+// cada par, escribe MOTORES en el Monitor Serial (con las ruedas levantadas).
+constexpr bool kInvertirIzqA = true;   // D5/D6
+constexpr bool kInvertirIzqB = true;   // D7/D8
+constexpr bool kInvertirDerA = true;   // D9/D10
+constexpr bool kInvertirDerB = true;   // D11/D13
+constexpr unsigned long kPruebaMotorMs = 2000UL;
 
 // Compuerta única: un solo servo en D3 inclina la bandeja hacia un lado.
 // Plástico gira a la IZQUIERDA y vidrio a la DERECHA; luego vuelve al centro.
@@ -366,22 +371,44 @@ void mostrarQrReal(const char* codigo) {
   caraActual = CaraReci::SinDibujar;
 }
 
+void escribirMotor(uint8_t pinA, uint8_t pinB, bool adelante, bool invertir) {
+  const bool sentido = invertir ? !adelante : adelante;
+  digitalWrite(pinA, sentido ? HIGH : LOW);
+  digitalWrite(pinB, sentido ? LOW : HIGH);
+}
+
 void escribirLadoIzquierdo(bool adelante) {
-  const bool sentido = kInvertirLadoIzquierdo ? !adelante : adelante;
-  digitalWrite(kIzqIn1, sentido ? HIGH : LOW);
-  digitalWrite(kIzqIn2, sentido ? LOW : HIGH);
-  digitalWrite(kIzqIn3, sentido ? HIGH : LOW);
-  digitalWrite(kIzqIn4, sentido ? LOW : HIGH);
+  escribirMotor(kIzqIn1, kIzqIn2, adelante, kInvertirIzqA);
+  escribirMotor(kIzqIn3, kIzqIn4, adelante, kInvertirIzqB);
 }
 
 void escribirLadoDerecho(bool adelante) {
-  // Direcciones finales comprobadas durante la ruta:
-  // D9/D10 (rueda delantera derecha) invertido; D11/D13 normal.
-  const bool sentidoDelantero = !adelante;
-  digitalWrite(kDerIn1, sentidoDelantero ? HIGH : LOW);
-  digitalWrite(kDerIn2, sentidoDelantero ? LOW : HIGH);
-  digitalWrite(kDerIn3, adelante ? HIGH : LOW);
-  digitalWrite(kDerIn4, adelante ? LOW : HIGH);
+  escribirMotor(kDerIn1, kDerIn2, adelante, kInvertirDerA);
+  escribirMotor(kDerIn3, kDerIn4, adelante, kInvertirDerB);
+}
+
+void detenerMotores();
+
+// Diagnóstico con las ruedas levantadas: mueve un solo par de pines
+// "adelante" durante 2 s para identificar qué rueda controla cada par.
+void probarMotores() {
+  struct Par { uint8_t a; uint8_t b; bool invertir; const char* nombre; };
+  const Par pares[] = {
+    {kIzqIn1, kIzqIn2, kInvertirIzqA, "D5/D6   (kInvertirIzqA)"},
+    {kIzqIn3, kIzqIn4, kInvertirIzqB, "D7/D8   (kInvertirIzqB)"},
+    {kDerIn1, kDerIn2, kInvertirDerA, "D9/D10  (kInvertirDerA)"},
+    {kDerIn3, kDerIn4, kInvertirDerB, "D11/D13 (kInvertirDerB)"},
+  };
+  for (const Par& par : pares) {
+    Serial.print(F("MOTOR "));
+    Serial.print(par.nombre);
+    Serial.println(F(": adelante 2 s. Mira que rueda gira y hacia donde."));
+    escribirMotor(par.a, par.b, true, par.invertir);
+    delay(kPruebaMotorMs);
+    detenerMotores();
+    delay(1000);
+  }
+  Serial.println(F("MOTORES: prueba terminada."));
 }
 
 void detenerMotores() {
@@ -979,8 +1006,15 @@ void procesarComando(char* entrada) {
   } else if (es(entrada, "STATUS")) {
     informarPunto(F("Posicion: "), puntoActual);
     informarPunto(F("Destino: "), destino);
+  } else if (es(entrada, "MOTORES")) {
+    if (modo != Modo::Detenido) {
+      informar(F("Primero detén a RECI con S."));
+      return;
+    }
+    if (!permitirMovimientoManual()) return;
+    probarMotores();
   } else if (es(entrada, "HELP")) {
-    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | V14 TRACE16 | STATUS"));
+    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES | V14 TRACE16 | STATUS"));
   } else {
     informar(F("ERROR: comando invalido. Escribe HELP."));
   }
