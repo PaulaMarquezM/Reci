@@ -2,9 +2,9 @@
 // RECI · Ruta demo sin sensores de linea
 // Arduino Mega 2560 + 2 L298N + 4 motores TT
 //
-// Ruta recta de demostración: BASE -> P1 -> P2
-// El regreso a BASE se hace manualmente por seguridad: RECI no tiene un
-// sensor trasero para retroceder de forma autónoma.
+// Ruta recta de demostración: BASE <-> P1 <-> P2
+// RECI no gira: hacia P1/P2 avanza y hacia BASE regresa en reversa por la
+// misma línea. En reversa frena con el ultrasónico trasero (D26/D27).
 //
 // IMPORTANTE
 // - Este sketch NO se mueve al encender.
@@ -84,6 +84,12 @@ constexpr unsigned long kEchoTimeoutUs = 25000UL;
 // Tras detectar un obstáculo, el frente debe quedar libre este tiempo antes
 // de continuar solo. Evita que una lectura aislada haga arrancar a RECI.
 constexpr unsigned long kFrenteLibreAntesDeReanudarMs = 1000UL;
+
+// HC-SR04 trasero (el tercer ultrasónico): mira hacia atrás y frena a RECI
+// cuando regresa en reversa. Si no responde (sin cable), la reversa avanza
+// sin freno, así que móntalo antes de usar BASE desde la app.
+constexpr uint8_t kTrigTrasero = 26;
+constexpr uint8_t kEchoTrasero = 27;
 
 // HC-SR04 interno (el que estaba al costado): mira el hueco donde se deja la
 // botella. Con RECI detenido, un objeto que se queda cerca dispara la foto.
@@ -684,9 +690,24 @@ void actualizarBotella() {
   mostrarLcd("Analizando residuo", "No lo retires");
 }
 
-bool hayObstaculoFrontal() {
-  const long distancia = distanciaFrontalCm();
+long distanciaTraseraCm() {
+  return medirDistanciaCm(kTrigTrasero, kEchoTrasero);
+}
+
+bool rutaEnReversa = false;
+
+// El freno usa el sensor que mira hacia donde se mueve RECI.
+bool hayObstaculoEnSentido() {
+  const long distancia = rutaEnReversa ? distanciaTraseraCm() : distanciaFrontalCm();
   return distancia > 0 && distancia <= static_cast<long>(kDistanciaSeguraCm);
+}
+
+void moverEnSentidoRuta() {
+  if (rutaEnReversa) {
+    retroceder();
+  } else {
+    avanzar();
+  }
 }
 
 void detenerTodo(const __FlashStringHelper* motivo) {
@@ -703,40 +724,55 @@ bool tiemposConfigurados() {
   return kBaseAP1Ms > 0 && kP1AP2Ms > 0;
 }
 
-unsigned long tiempoSiguienteTramo(Punto desde) {
-  switch (desde) {
-    case Punto::Base: return kBaseAP1Ms;
-    case Punto::P1: return kP1AP2Ms;
-    default: return 0;
+// Los puntos están en línea recta: BASE (0) - P1 (1) - P2 (2).
+int8_t indicePunto(Punto punto) {
+  switch (punto) {
+    case Punto::Base: return 0;
+    case Punto::P1: return 1;
+    case Punto::P2: return 2;
+    default: return -1;
   }
 }
 
-Punto siguientePunto(Punto desde) {
-  switch (desde) {
-    case Punto::Base: return Punto::P1;
-    case Punto::P1: return Punto::P2;
+Punto puntoEnIndice(int8_t indice) {
+  switch (indice) {
+    case 0: return Punto::Base;
+    case 1: return Punto::P1;
+    case 2: return Punto::P2;
     default: return Punto::Desconocido;
   }
 }
 
+// Un tramo dura lo mismo en ambos sentidos: BASE-P1 o P1-P2.
+unsigned long tiempoTramo(Punto desde, Punto hacia) {
+  const int8_t menor = min(indicePunto(desde), indicePunto(hacia));
+  if (menor == 0) return kBaseAP1Ms;
+  if (menor == 1) return kP1AP2Ms;
+  return 0;
+}
+
+Punto siguientePunto(Punto desde) {
+  const int8_t paso = rutaEnReversa ? -1 : 1;
+  return puntoEnIndice(indicePunto(desde) + paso);
+}
+
 void iniciarSiguienteTramo() {
-  const unsigned long duracion = tiempoSiguienteTramo(puntoActual);
+  const Punto proximo = siguientePunto(puntoActual);
+  if (proximo == Punto::Desconocido) {
+    detenerTodo(F("FIN DE RUTA: no hay mas puntos en ese sentido"));
+    return;
+  }
+  const unsigned long duracion = tiempoTramo(puntoActual, proximo);
   if (duracion == 0) {
     detenerTodo(F("ERROR: calibra T1 y T2 antes de usar P1/P2"));
     return;
   }
-
-  const Punto proximo = siguientePunto(puntoActual);
-  if (proximo == Punto::Desconocido) {
-    detenerTodo(F("FIN DE RUTA: regresa RECI manualmente a BASE"));
-    return;
-  }
-  avanzar();
+  moverEnSentidoRuta();
   terminaTramoEn = millis() + duracion;
   modo = Modo::EnRuta;
   mostrarCara(CaraReci::Movimiento);
   mostrarRutaEnLcd("Voy hacia", proximo);
-  Serial.print(F("RECI: ruta "));
+  Serial.print(rutaEnReversa ? F("RECI: ruta en reversa ") : F("RECI: ruta "));
   Serial.print(nombrePunto(puntoActual));
   Serial.print(F(" -> "));
   Serial.println(nombrePunto(proximo));
@@ -758,14 +794,6 @@ void irAPunto(Punto solicitado) {
     informar(F("ERROR: primero calibra los tiempos T1/T2"));
     return;
   }
-  if (solicitado == Punto::Base && puntoActual != Punto::Base) {
-    informar(F("La ruta recta no vuelve sola a BASE. Regresa RECI manualmente."));
-    return;
-  }
-  if (puntoActual == Punto::P2) {
-    informar(F("RECI ya termino la ruta. Regresalo manualmente a BASE."));
-    return;
-  }
   if (compuertaActiva != CompuertaActiva::Ninguna) {
     destinoPendienteCompuerta = solicitado;
     detenerMotores();
@@ -775,6 +803,7 @@ void irAPunto(Punto solicitado) {
   }
 
   destino = solicitado;
+  rutaEnReversa = indicePunto(solicitado) < indicePunto(puntoActual);
   iniciarSiguienteTramo();
 }
 
@@ -784,7 +813,7 @@ void actualizarRuta() {
   // Pausa segura: RECI vuelve a andar solo cuando el ultrasónico lleva un
   // segundo entero sin ver ningún objeto a menos de 20 cm.
   if (modo == Modo::Emergencia) {
-    if (hayObstaculoFrontal()) {
+    if (hayObstaculoEnSentido()) {
       frenteLibreDesde = 0;
       return;
     }
@@ -799,7 +828,7 @@ void actualizarRuta() {
 
     terminaTramoEn = ahora + tiempoRestantePausaMs;
     frenteLibreDesde = 0;
-    avanzar();
+    moverEnSentidoRuta();
     modo = Modo::EnRuta;
     mostrarCara(CaraReci::Movimiento);
     mostrarLcd("Ruta reanudada", "Sigo la ruta");
@@ -811,7 +840,7 @@ void actualizarRuta() {
 
   if (ahora - ultimoChequeoObstaculo >= kRevisionObstaculoMs) {
     ultimoChequeoObstaculo = ahora;
-    if (hayObstaculoFrontal()) {
+    if (hayObstaculoEnSentido()) {
       detenerMotores();
       modo = Modo::Emergencia;
       tiempoRestantePausaMs =
@@ -819,7 +848,9 @@ void actualizarRuta() {
       frenteLibreDesde = 0;
       mostrarCara(CaraReci::Alerta);
       mostrarLcd("Obstaculo!", "Reanuda solo");
-      informar(F("EMERGENCIA: obstaculo frontal. Reanuda solo al despejar."));
+      informar(rutaEnReversa
+                   ? F("EMERGENCIA: obstaculo trasero. Reanuda solo al despejar.")
+                   : F("EMERGENCIA: obstaculo frontal. Reanuda solo al despejar."));
       return;
     }
   }
@@ -1055,15 +1086,15 @@ void procesarComando(char* entrada) {
   } else if (es(entrada, "RESUME")) {
     if (modo != Modo::Emergencia) {
       informar(F("No hay una emergencia activa."));
-    } else if (hayObstaculoFrontal()) {
-      informar(F("El obstaculo sigue al frente."));
+    } else if (hayObstaculoEnSentido()) {
+      informar(F("El obstaculo sigue en el camino."));
     } else if (destino == Punto::Desconocido) {
       modo = Modo::Detenido;
       informar(F("No hay ruta pendiente."));
     } else {
       terminaTramoEn = millis() + tiempoRestantePausaMs;
       frenteLibreDesde = 0;
-      avanzar();
+      moverEnSentidoRuta();
       modo = Modo::EnRuta;
       mostrarCara(CaraReci::Movimiento);
       mostrarLcd("Ruta reanudada", "Con cuidado");
@@ -1076,6 +1107,17 @@ void procesarComando(char* entrada) {
   } else if (es(entrada, "STATUS")) {
     informarPunto(F("Posicion: "), puntoActual);
     informarPunto(F("Destino: "), destino);
+  } else if (es(entrada, "SENSORES?")) {
+    const long frente = distanciaFrontalCm();
+    const long atras = distanciaTraseraCm();
+    const long botella = distanciaBotellaCm();
+    Serial.print(F("RECI: frente="));
+    Serial.print(frente);
+    Serial.print(F(" cm  atras="));
+    Serial.print(atras);
+    Serial.print(F(" cm  botella="));
+    Serial.print(botella);
+    Serial.println(F(" cm  (-1 = sin lectura)"));
   } else if (es(entrada, "BOTELLA?")) {
     const long distancia = distanciaBotellaCm();
     Serial.print(F("RECI: sensor de botella = "));
@@ -1093,7 +1135,7 @@ void procesarComando(char* entrada) {
     if (!permitirMovimientoManual()) return;
     probarMotores();
   } else if (es(entrada, "HELP")) {
-    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? | V14 TRACE16 | STATUS"));
+    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? SENSORES? | BASE | V14 TRACE16 | STATUS"));
   } else {
     informar(F("ERROR: comando invalido. Escribe HELP."));
   }
@@ -1339,6 +1381,9 @@ void setup() {
   pinMode(kTrigFrontal, OUTPUT);
   pinMode(kEchoFrontal, INPUT);
   digitalWrite(kTrigFrontal, LOW);
+  pinMode(kTrigTrasero, OUTPUT);
+  pinMode(kEchoTrasero, INPUT);
+  digitalWrite(kTrigTrasero, LOW);
   pinMode(kTrigBotella, OUTPUT);
   pinMode(kEchoBotella, INPUT);
   digitalWrite(kTrigBotella, LOW);
