@@ -876,7 +876,8 @@ void actualizarRuta() {
 }
 
 bool es(const char* texto, const char* esperado) {
-  return strcmp(texto, esperado) == 0;
+  // Sin distinguir mayúsculas: "sensores?" funciona igual que "SENSORES?".
+  return strcasecmp(texto, esperado) == 0;
 }
 
 bool empiezaCon(const char* texto, const char* prefijo) {
@@ -1107,7 +1108,7 @@ void procesarComando(char* entrada) {
   } else if (es(entrada, "STATUS")) {
     informarPunto(F("Posicion: "), puntoActual);
     informarPunto(F("Destino: "), destino);
-  } else if (es(entrada, "SENSORES?")) {
+  } else if (es(entrada, "SENSORES?") || es(entrada, "SENSORES")) {
     const long frente = distanciaFrontalCm();
     const long atras = distanciaTraseraCm();
     const long botella = distanciaBotellaCm();
@@ -1118,7 +1119,7 @@ void procesarComando(char* entrada) {
     Serial.print(F(" cm  botella="));
     Serial.print(botella);
     Serial.println(F(" cm  (-1 = sin lectura)"));
-  } else if (es(entrada, "BOTELLA?")) {
+  } else if (es(entrada, "BOTELLA?") || es(entrada, "BOTELLA")) {
     const long distancia = distanciaBotellaCm();
     Serial.print(F("RECI: sensor de botella = "));
     if (distancia < 0) {
