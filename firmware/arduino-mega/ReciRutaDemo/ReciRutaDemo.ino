@@ -46,9 +46,9 @@ constexpr unsigned long kPruebaMotorMs = 2000UL;
 // CALIBRACION: si en el robot real gira al lado contrario, intercambia
 // kServoIzquierda y kServoDerecha. Ajusta los ángulos con ReciServosTest.
 constexpr uint8_t kServoCompuertaPin = 3;
-constexpr uint8_t kServoCentro = 60;     // en 90 quedaba girado a la derecha
-constexpr uint8_t kServoIzquierda = 10;
-constexpr uint8_t kServoDerecha = 110;
+constexpr uint8_t kServoCentro = 65;     // en 90 quedaba girado a la derecha
+constexpr uint8_t kServoIzquierda = 30;
+constexpr uint8_t kServoDerecha = 100;
 constexpr unsigned long kCompuertaAbiertaMs = 2000UL;
 
 Servo servoCompuerta;
