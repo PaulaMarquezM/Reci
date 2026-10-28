@@ -93,11 +93,13 @@ constexpr uint8_t kEchoTrasero = 27;
 
 // HC-SR04 interno (el que estaba al costado): mira el hueco donde se deja la
 // botella. Con RECI detenido, un objeto que se queda cerca dispara la foto.
-// CALIBRACION: mide con BOTELLA? a qué distancia queda la botella y ajusta
-// kDistanciaBotellaCm un poco por encima de ese valor.
+// CALIBRACION: al arrancar (o con CALIBRAR) mide el hueco vacío y detecta la
+// botella cuando la lectura queda kMargenBotellaCm por debajo de ese valor.
+// Si no hay lectura válida se usa kDistanciaBotellaCm.
 constexpr uint8_t kTrigBotella = 24;
 constexpr uint8_t kEchoBotella = 25;
-constexpr long kDistanciaBotellaCm = 15;
+constexpr long kDistanciaBotellaCm = 10;
+constexpr long kMargenBotellaCm = 4;
 // Por debajo de ~3 cm el HC-SR04 no mide bien: se descarta como ruido.
 constexpr long kDistanciaBotellaMinCm = 3;
 constexpr unsigned long kRevisionBotellaMs = 150UL;
@@ -217,6 +219,7 @@ unsigned long frenteLibreDesde = 0;
 unsigned long proximaPresenciaPermitidaEn = 0;
 bool pirListoParaNuevoEvento = false;
 unsigned long ultimoChequeoBotella = 0;
+long umbralBotellaCm = kDistanciaBotellaCm;
 unsigned long botellaPresenteDesde = 0;
 unsigned long proximaBotellaPermitidaEn = 0;
 bool huecoVacioDesdeUltimaBotella = true;
@@ -663,7 +666,7 @@ void actualizarBotella() {
 
   const long distancia = distanciaBotellaCm();
   const bool hayBotella = distancia >= kDistanciaBotellaMinCm &&
-                          distancia <= kDistanciaBotellaCm;
+                          distancia <= umbralBotellaCm;
   if (!hayBotella) {
     botellaPresenteDesde = 0;
     huecoVacioDesdeUltimaBotella = true;
@@ -688,6 +691,33 @@ void actualizarBotella() {
   Serial.println(F(" cm"));
   mostrarCara(CaraReci::Movimiento);
   mostrarLcd("Analizando residuo", "No lo retires");
+}
+
+// Mide el hueco vacío (mediana de 5) y fija el umbral de detección.
+void calibrarBotella() {
+  long lecturas[5];
+  for (uint8_t i = 0; i < 5; ++i) {
+    lecturas[i] = distanciaBotellaCm();
+    delay(60);
+  }
+  for (uint8_t i = 1; i < 5; ++i) {
+    for (uint8_t j = i; j > 0 && lecturas[j - 1] > lecturas[j]; --j) {
+      const long tmp = lecturas[j];
+      lecturas[j] = lecturas[j - 1];
+      lecturas[j - 1] = tmp;
+    }
+  }
+  const long vacio = lecturas[2];
+  if (vacio - kMargenBotellaCm >= kDistanciaBotellaMinCm + 2) {
+    umbralBotellaCm = vacio - kMargenBotellaCm;
+  } else {
+    umbralBotellaCm = kDistanciaBotellaCm;
+  }
+  Serial.print(F("RECI: hueco vacio = "));
+  Serial.print(vacio);
+  Serial.print(F(" cm; botella si <= "));
+  Serial.print(umbralBotellaCm);
+  Serial.println(F(" cm"));
 }
 
 long distanciaTraseraCm() {
@@ -881,7 +911,7 @@ bool es(const char* texto, const char* esperado) {
 }
 
 bool empiezaCon(const char* texto, const char* prefijo) {
-  return strncmp(texto, prefijo, strlen(prefijo)) == 0;
+  return strncasecmp(texto, prefijo, strlen(prefijo)) == 0;
 }
 
 float leerPromedioAdc(uint8_t pin) {
@@ -1128,6 +1158,23 @@ void procesarComando(char* entrada) {
       Serial.print(distancia);
       Serial.println(F(" cm"));
     }
+  } else if (es(entrada, "CALIBRAR")) {
+    calibrarBotella();
+  } else if (empiezaCon(entrada, "SERVO:")) {
+    // Prueba de ángulo sin recargar: SERVO:150. Vuelve al centro con SERVO:90.
+    if (modo != Modo::Detenido) {
+      informar(F("Primero detén a RECI con S."));
+      return;
+    }
+    const int angulo = atoi(entrada + strlen("SERVO:"));
+    if (angulo < 0 || angulo > 180) {
+      informar(F("ERROR: angulo entre 0 y 180."));
+      return;
+    }
+    servoCompuerta.write(angulo);
+    Serial.print(F("RECI: servo a "));
+    Serial.print(angulo);
+    Serial.println(F(" grados"));
   } else if (es(entrada, "MOTORES")) {
     if (modo != Modo::Detenido) {
       informar(F("Primero detén a RECI con S."));
@@ -1136,7 +1183,7 @@ void procesarComando(char* entrada) {
     if (!permitirMovimientoManual()) return;
     probarMotores();
   } else if (es(entrada, "HELP")) {
-    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? SENSORES? | BASE | V14 TRACE16 | STATUS"));
+    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? SENSORES? CALIBRAR SERVO:n | BASE | V14 TRACE16 | STATUS"));
   } else {
     informar(F("ERROR: comando invalido. Escribe HELP."));
   }
@@ -1391,6 +1438,7 @@ void setup() {
   pinMode(kPirPin, INPUT);
   proximaPresenciaPermitidaEn = millis() + kPirWarmupMs;
   Serial.println(F("PASO 3: sensores configurados."));
+  calibrarBotella();
   diagnosticarLineasI2c(F("despues de sensores"));
 
   Serial.println(F("PASO 4: iniciando servo de compuerta."));
