@@ -49,6 +49,10 @@ CONTEXTO_LLAMADA_S = 120.0
 TIMEOUT_VISION_S = 60
 TIMEOUT_HTTP_S = 15
 
+MATERIALES = ("plastico", "vidrio")
+FUENTE_PROVEEDOR = "openai_sistema_experto"
+FUENTE_LOCAL = "modelo_local"
+
 RUTAS_DEMO = {"base": "BASE", "p1": "P1", "parada 1": "P1", "p2": "P2", "parada 2": "P2"}
 
 
@@ -71,6 +75,60 @@ def detectar_puerto_mega():
     if not candidatos:
         raise SystemExit("No encuentro el Arduino Mega. Conéctalo por USB o define RECI_PUERTO_MEGA.")
     return candidatos[0]
+
+
+def votos_de_foto(resultado):
+    """Devuelve {fuente: (material, confianza)} de una foto ya clasificada.
+
+    El servicio de visión da un voto del proveedor (OpenAI + sistema experto)
+    y otro del modelo local (MobileNetV3) sobre la misma imagen.
+    """
+    votos = {}
+    for voto in resultado.get("vision_votes") or []:
+        fuente = voto.get("source")
+        if fuente in (FUENTE_PROVEEDOR, FUENTE_LOCAL):
+            votos[fuente] = (voto.get("material", "desconocido"), float(voto.get("confidence") or 0.0))
+    if FUENTE_PROVEEDOR not in votos:
+        votos[FUENTE_PROVEEDOR] = (resultado.get("material", "desconocido"),
+                                   float(resultado.get("confidence") or 0.0))
+    return votos
+
+
+def decidir(fotos):
+    """Política híbrida conservadora, la misma que usaba la ESP32-CAM.
+
+    - 2 de 3 fotos del proveedor coinciden: se acepta.
+    - El proveedor dio un solo voto válido: el modelo local debe respaldarlo
+      con 2 de 3 de la misma clase.
+    - El proveedor se abstuvo en todas: decide la mayoría 2/3 del modelo local.
+    - Cualquier otro caso: desconocido (no se inclina la bandeja).
+    Devuelve (material o None, confianza promedio).
+    """
+    def por_material(fuente):
+        cuenta = {m: [] for m in MATERIALES}
+        for foto in fotos:
+            material, confianza = foto.get(fuente, ("desconocido", 0.0))
+            if material in cuenta:
+                cuenta[material].append(confianza)
+        return cuenta
+
+    proveedor = por_material(FUENTE_PROVEEDOR)
+    local = por_material(FUENTE_LOCAL)
+    for m in MATERIALES:
+        if len(proveedor[m]) >= VOTOS_PARA_DECIDIR:
+            return m, sum(proveedor[m]) / len(proveedor[m])
+
+    validos = [m for m in MATERIALES for _ in proveedor[m]]
+    if len(validos) == 1:
+        m = validos[0]
+        if len(local[m]) >= VOTOS_PARA_DECIDIR:
+            return m, (proveedor[m][0] + sum(local[m])) / (1 + len(local[m]))
+        return None, 0.0
+    if not validos:
+        for m in MATERIALES:
+            if len(local[m]) >= VOTOS_PARA_DECIDIR:
+                return m, sum(local[m]) / len(local[m])
+    return None, 0.0
 
 
 class Mega:
@@ -194,7 +252,7 @@ class Reci:
             print(f"--- CLASIFICANDO RESIDUO: {FOTOS_POR_LECTURA} fotos ---")
             inicio = time.monotonic()
             self.mega.enviar("@A")
-            votos = {"plastico": [], "vidrio": []}
+            fotos = []
             por_foto = []
             latencias_ms = []
             for numero in range(1, FOTOS_POR_LECTURA + 1):
@@ -211,22 +269,21 @@ class Reci:
                     por_foto.append("error")
                     continue
                 latencias_ms.append((time.monotonic() - inicio_foto) * 1000)
-                material = resultado.get("material", "desconocido")
-                confianza = float(resultado.get("confidence") or 0.0)
-                print(f"foto {numero}: {material} ({confianza:.2f})")
-                por_foto.append(material)
-                if material in votos:
-                    votos[material].append(confianza)
+                votos = votos_de_foto(resultado)
+                fotos.append(votos)
+                material, confianza = votos[FUENTE_PROVEEDOR]
+                local = votos.get(FUENTE_LOCAL, ("no_disponible", 0.0))
+                print(f"foto {numero}: {material} ({confianza:.2f}) · local {local[0]} ({local[1]:.2f})")
+                por_foto.append(f"{material}/{local[0]}")
                 time.sleep(SEPARACION_FOTOS_S)
 
-            material = next((m for m, v in votos.items() if len(v) >= VOTOS_PARA_DECIDIR), None)
+            material, confianza = decidir(fotos)
             if material is None:
                 print("Resultado final: desconocido")
                 self.mega.enviar("@U")
                 self._guardar_metrica(por_foto, "desconocido", 0.0, latencias_ms, inicio, False)
                 return
 
-            confianza = sum(votos[material]) / len(votos[material])
             print(f"Resultado final: {material} ({confianza:.2f})")
             confirmada = self._abrir_compuerta(material)
             self._guardar_metrica(por_foto, material, confianza, latencias_ms, inicio, confirmada)
