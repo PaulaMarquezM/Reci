@@ -92,14 +92,13 @@ constexpr uint8_t kTrigTrasero = 26;
 constexpr uint8_t kEchoTrasero = 27;
 
 // HC-SR04 interno (el que estaba al costado): mira el hueco donde se deja la
-// botella. Con RECI detenido, un objeto que se queda cerca dispara la foto.
-// CALIBRACION: al arrancar (o con CALIBRAR) mide el hueco vacío y detecta la
-// botella cuando la lectura queda kMargenBotellaCm por debajo de ese valor.
-// Si no hay lectura válida se usa kDistanciaBotellaCm.
+// botella. Solo se busca botella durante kBuscarBotellaTrasPirMs después de
+// que el PIR ve a alguien; así el sensor no dispara fotos con el hueco vacío.
+// CALIBRACION: con la botella puesta, BOTELLA? debe dar <= kDistanciaBotellaCm.
 constexpr uint8_t kTrigBotella = 24;
 constexpr uint8_t kEchoBotella = 25;
 constexpr long kDistanciaBotellaCm = 10;
-constexpr long kMargenBotellaCm = 4;
+constexpr unsigned long kBuscarBotellaTrasPirMs = 60000UL;
 // Por debajo de ~3 cm el HC-SR04 no mide bien: se descarta como ruido.
 constexpr long kDistanciaBotellaMinCm = 3;
 constexpr unsigned long kRevisionBotellaMs = 150UL;
@@ -219,7 +218,7 @@ unsigned long frenteLibreDesde = 0;
 unsigned long proximaPresenciaPermitidaEn = 0;
 bool pirListoParaNuevoEvento = false;
 unsigned long ultimoChequeoBotella = 0;
-long umbralBotellaCm = kDistanciaBotellaCm;
+unsigned long buscarBotellaHasta = 0;
 unsigned long botellaPresenteDesde = 0;
 unsigned long proximaBotellaPermitidaEn = 0;
 bool huecoVacioDesdeUltimaBotella = true;
@@ -617,6 +616,12 @@ void actualizarPresencia() {
     return;
   }
 
+  // Mientras haya alguien cerca, se sigue buscando la botella.
+  if (static_cast<long>(millis() - buscarBotellaHasta) >= 0) {
+    informar(F("BOTELLA: buscando (PIR)"));
+  }
+  buscarBotellaHasta = millis() + kBuscarBotellaTrasPirMs;
+
   if (modo != Modo::Detenido) return;
   if (compuertaActiva != CompuertaActiva::Ninguna) return;
   if (!pirListoParaNuevoEvento) return;
@@ -661,12 +666,16 @@ void actualizarBotella() {
     return;
   }
   const unsigned long ahora = millis();
+  if (static_cast<long>(ahora - buscarBotellaHasta) >= 0) {
+    botellaPresenteDesde = 0;
+    return;
+  }
   if (ahora - ultimoChequeoBotella < kRevisionBotellaMs) return;
   ultimoChequeoBotella = ahora;
 
   const long distancia = distanciaBotellaCm();
   const bool hayBotella = distancia >= kDistanciaBotellaMinCm &&
-                          distancia <= umbralBotellaCm;
+                          distancia <= kDistanciaBotellaCm;
   if (!hayBotella) {
     botellaPresenteDesde = 0;
     huecoVacioDesdeUltimaBotella = true;
@@ -691,33 +700,6 @@ void actualizarBotella() {
   Serial.println(F(" cm"));
   mostrarCara(CaraReci::Movimiento);
   mostrarLcd("Analizando residuo", "No lo retires");
-}
-
-// Mide el hueco vacío (mediana de 5) y fija el umbral de detección.
-void calibrarBotella() {
-  long lecturas[5];
-  for (uint8_t i = 0; i < 5; ++i) {
-    lecturas[i] = distanciaBotellaCm();
-    delay(60);
-  }
-  for (uint8_t i = 1; i < 5; ++i) {
-    for (uint8_t j = i; j > 0 && lecturas[j - 1] > lecturas[j]; --j) {
-      const long tmp = lecturas[j];
-      lecturas[j] = lecturas[j - 1];
-      lecturas[j - 1] = tmp;
-    }
-  }
-  const long vacio = lecturas[2];
-  if (vacio - kMargenBotellaCm >= kDistanciaBotellaMinCm + 2) {
-    umbralBotellaCm = vacio - kMargenBotellaCm;
-  } else {
-    umbralBotellaCm = kDistanciaBotellaCm;
-  }
-  Serial.print(F("RECI: hueco vacio = "));
-  Serial.print(vacio);
-  Serial.print(F(" cm; botella si <= "));
-  Serial.print(umbralBotellaCm);
-  Serial.println(F(" cm"));
 }
 
 long distanciaTraseraCm() {
@@ -1158,8 +1140,6 @@ void procesarComando(char* entrada) {
       Serial.print(distancia);
       Serial.println(F(" cm"));
     }
-  } else if (es(entrada, "CALIBRAR")) {
-    calibrarBotella();
   } else if (empiezaCon(entrada, "SERVO:")) {
     // Prueba de ángulo sin recargar: SERVO:150. Vuelve al centro con SERVO:90.
     if (modo != Modo::Detenido) {
@@ -1183,7 +1163,7 @@ void procesarComando(char* entrada) {
     if (!permitirMovimientoManual()) return;
     probarMotores();
   } else if (es(entrada, "HELP")) {
-    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? SENSORES? CALIBRAR SERVO:n | BASE | V14 TRACE16 | STATUS"));
+    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? SENSORES? SERVO:n | BASE | V14 TRACE16 | STATUS"));
   } else {
     informar(F("ERROR: comando invalido. Escribe HELP."));
   }
@@ -1438,7 +1418,6 @@ void setup() {
   pinMode(kPirPin, INPUT);
   proximaPresenciaPermitidaEn = millis() + kPirWarmupMs;
   Serial.println(F("PASO 3: sensores configurados."));
-  calibrarBotella();
   diagnosticarLineasI2c(F("despues de sensores"));
 
   Serial.println(F("PASO 4: iniciando servo de compuerta."));
