@@ -175,9 +175,24 @@ _OPENAI_PET_OBJECTS = frozenset({
 })
 
 
+# Lo mismo con objetos fibrosos u orgánicos: el cartón gris/blanco/beige tiene
+# poca saturación y la heurística de "metal mate" lo convierte en lata. Si
+# OpenAI ya vio cartón, papel, Tetra Pak u orgánico, no es metal.
+_OPENAI_NO_METAL_OBJECTS = frozenset({
+    "carton", "vaso_carton", "tetra_pak", "papel_servilleta",
+    "cascara_fruta", "restos_comida",
+})
+
+
 def _revocar_falso_lata_openai(original: dict, refinado: dict) -> dict:
     if refinado.get("objeto_reconocido") != "lata":
         return refinado
+    if original.get("objeto_reconocido") in _OPENAI_NO_METAL_OBJECTS:
+        logger.warning(
+            "veto OpenAI: heurística convirtió %s en lata",
+            original.get("objeto_reconocido"),
+        )
+        return original
     if original.get("objeto_reconocido") not in _OPENAI_PET_OBJECTS:
         return refinado
     if original.get("tapa") != "rosca_plastico":
