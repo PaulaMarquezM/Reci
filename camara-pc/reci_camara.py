@@ -52,6 +52,17 @@ TIMEOUT_HTTP_S = 15
 MATERIALES = ("plastico", "vidrio")
 FUENTE_PROVEEDOR = "openai_sistema_experto"
 FUENTE_LOCAL = "modelo_local"
+# El sistema experto reconoció algo que no va en Reci (lata/metal, papel,
+# cartón, orgánico). El servicio lo entrega como "desconocido", pero no es
+# duda: es un rechazo, y el modelo local (que solo conoce plástico/vidrio)
+# no puede pasarlo por encima.
+FUENTE_RECHAZO = "rechazo_sistema_experto"
+CONCLUSIONES_RECHAZO = ("LATA", "ORGANICO")
+# Mensaje en la LCD (16 caracteres por línea) cuando gana un rechazo.
+MENSAJES_RECHAZO = {
+    "lata": "CMD:LCD:Es metal (lata)|No va en Reci",
+    "organico": "CMD:LCD:Papel u organico|No va en Reci",
+}
 
 RUTAS_DEMO = {"base": "BASE", "p1": "P1", "parada 1": "P1", "p2": "P2", "parada 2": "P2"}
 
@@ -91,43 +102,39 @@ def votos_de_foto(resultado):
     if FUENTE_PROVEEDOR not in votos:
         votos[FUENTE_PROVEEDOR] = (resultado.get("material", "desconocido"),
                                    float(resultado.get("confidence") or 0.0))
+    # rule_applied = "<CONCLUSION> · <n> regla(s) · CF <x>" (ia/vision-service/main.py).
+    conclusion = (resultado.get("rule_applied") or "").split(" · ")[0].strip().upper()
+    if conclusion in CONCLUSIONES_RECHAZO:
+        votos[FUENTE_RECHAZO] = (conclusion, votos[FUENTE_PROVEEDOR][1])
     return votos
 
 
 def decidir(fotos):
-    """Política híbrida conservadora, la misma que usaba la ESP32-CAM.
+    """Política conservadora: decide la mayoría de OpenAI + sistema experto.
 
-    - 2 de 3 fotos del proveedor coinciden: se acepta.
-    - El proveedor dio un solo voto válido: el modelo local debe respaldarlo
-      con 2 de 3 de la misma clase.
-    - El proveedor se abstuvo en todas: decide la mayoría 2/3 del modelo local.
-    - Cualquier otro caso: desconocido (no se inclina la bandeja).
+    - 2 de 3 fotos del proveedor dicen plástico o vidrio: se acepta.
+    - El sistema experto concluyó lo mismo (lata u orgánico) en 2 de 3
+      fotos: devuelve "lata" u "organico". No abre compuerta.
+    - Cualquier otro caso (p. ej. 2 o más fotos "desconocido"): desconocido.
+      El modelo local solo se muestra como diagnóstico; ya no decide, porque
+      al ser binario convertía en plástico cosas que el proveedor no reconocía.
     Devuelve (material o None, confianza promedio).
     """
-    def por_material(fuente):
-        cuenta = {m: [] for m in MATERIALES}
-        for foto in fotos:
-            material, confianza = foto.get(fuente, ("desconocido", 0.0))
-            if material in cuenta:
-                cuenta[material].append(confianza)
-        return cuenta
+    proveedor = {m: [] for m in MATERIALES}
+    for foto in fotos:
+        material, confianza = foto.get(FUENTE_PROVEEDOR, ("desconocido", 0.0))
+        if material in proveedor:
+            proveedor[material].append(confianza)
 
-    proveedor = por_material(FUENTE_PROVEEDOR)
-    local = por_material(FUENTE_LOCAL)
     for m in MATERIALES:
         if len(proveedor[m]) >= VOTOS_PARA_DECIDIR:
             return m, sum(proveedor[m]) / len(proveedor[m])
 
-    validos = [m for m in MATERIALES for _ in proveedor[m]]
-    if len(validos) == 1:
-        m = validos[0]
-        if len(local[m]) >= VOTOS_PARA_DECIDIR:
-            return m, (proveedor[m][0] + sum(local[m])) / (1 + len(local[m]))
-        return None, 0.0
-    if not validos:
-        for m in MATERIALES:
-            if len(local[m]) >= VOTOS_PARA_DECIDIR:
-                return m, sum(local[m]) / len(local[m])
+    rechazos = [foto[FUENTE_RECHAZO] for foto in fotos if FUENTE_RECHAZO in foto]
+    for categoria in CONCLUSIONES_RECHAZO:
+        confianzas = [c for nombre, c in rechazos if nombre == categoria]
+        if len(confianzas) >= VOTOS_PARA_DECIDIR:
+            return categoria.lower(), sum(confianzas) / len(confianzas)
     return None, 0.0
 
 
@@ -273,6 +280,9 @@ class Reci:
                 fotos.append(votos)
                 material, confianza = votos[FUENTE_PROVEEDOR]
                 local = votos.get(FUENTE_LOCAL, ("no_disponible", 0.0))
+                rechazo = votos.get(FUENTE_RECHAZO)
+                if rechazo:
+                    material = rechazo[0].lower()
                 print(f"foto {numero}: {material} ({confianza:.2f}) · local {local[0]} ({local[1]:.2f})")
                 por_foto.append(f"{material}/{local[0]}")
                 time.sleep(SEPARACION_FOTOS_S)
@@ -282,6 +292,13 @@ class Reci:
                 print("Resultado final: desconocido")
                 self.mega.enviar("@U")
                 self._guardar_metrica(por_foto, "desconocido", 0.0, latencias_ms, inicio, False)
+                return
+            if material in MENSAJES_RECHAZO:
+                # Reconocido, pero no va en Reci: la bandeja no se mueve.
+                print(f"Resultado final: {material} ({confianza:.2f}) · no va en Reci")
+                self.mega.enviar("@U")
+                self.mega.enviar(MENSAJES_RECHAZO[material])
+                self._guardar_metrica(por_foto, material, confianza, latencias_ms, inicio, False)
                 return
 
             print(f"Resultado final: {material} ({confianza:.2f})")
