@@ -165,66 +165,26 @@ _GENERATION_CONFIG = {
 MAX_REINTENTOS = 1
 TIMEOUT_SEGUNDOS = 20.0
 
-# Veto aislado para la integración OpenAI. La heurística compartida puede
-# convertir una botella colorida en "lata" por su geometría/etiqueta; si la
-# propia API entregó señales fuertes de PET, conservamos esa lectura sin
-# modificar visual_heuristics.py ni el flujo de Claude/Gemini.
-_OPENAI_PET_OBJECTS = frozenset({
-    "botella_agua", "botella_gaseosa", "botella_energizante",
-    "botella_jugo_plastico", "botella_fioravanti", "botella_cola_gallito",
-})
-
-
-# Lo mismo con objetos fibrosos u orgánicos: el cartón gris/blanco/beige tiene
-# poca saturación y la heurística de "metal mate" lo convierte en lata. Si
-# OpenAI ya vio cartón, papel, Tetra Pak u orgánico, no es metal.
-_OPENAI_NO_METAL_OBJECTS = frozenset({
-    "carton", "vaso_carton", "tetra_pak", "papel_servilleta",
-    "cascara_fruta", "restos_comida",
-    # Vidrio: sobre la mesa beige de la webcam el frasco tiene poca saturación
-    # y la heurística lo marcaba como "metal mate"/"plateado" (prueba real
-    # 2026-11-08: frasco de vidrio y frasco de base de maquillaje → lata).
-    "frasco_vidrio", "botella_cerveza_vidrio", "botella_salsa_vidrio",
-    "botella_jugo_vidrio", "botella_mocachino", "botella_pony_malta",
-    "vaso_vidrio",
-})
-
-
-# Solo una botella (o algo que OpenAI no reconoció) puede ser en realidad una
-# lata mal leída. Con la webcam de la compu OpenCV casi nunca recorta el objeto
-# (contour_area_pct ≈ 0) y las señales de "metal" salen del fondo: una hoja
-# blanca o una mesa clara parecen aluminio. Por eso, si OpenAI ya reconoció un
-# objeto que no se confunde con una lata (funda, vaso, plato, frasco...), la
-# heurística no puede convertirlo en lata (prueba real 2026-11-08: funda de
-# snack, frasco gotero de vidrio y palitos de madera → lata).
-_OPENAI_CONFUNDIBLES_CON_LATA = frozenset({
-    "lata", "desconocido",
-    "botella_agua", "botella_gaseosa", "botella_energizante",
-    "botella_alcoholica_plastico", "botella_jugo_plastico", "botella_fioravanti",
-    "botella_cola_gallito", "botella_gatorade", "botella_aceite_plastico",
-    "botella_enjuague_bucal", "botella_atomizador",
-})
-
+# Veto aislado para la integración OpenAI: la heurística compartida de
+# visual_heuristics.py no se modifica (Claude/Gemini la siguen usando igual).
 
 def _revocar_falso_lata_openai(original: dict, refinado: dict) -> dict:
+    """Solo OpenAI puede concluir "lata"; la heurística de OpenCV no.
+
+    Con la webcam del robot OpenCV no recorta el objeto (contour_area_pct ≈ 0)
+    y sus señales de "metal" salen del fondo claro. Prueba real 2026-11-08:
+    en 18 consultas OpenAI nunca dijo lata; todas las latas las inventó la
+    heurística (frascos ámbar "desconocido" y una botella_agua → lata).
+    Si OpenAI dice "desconocido", el robot igual rechaza, así que convertirlo
+    en lata no aporta nada; si dice botella o frasco, conservar su lectura
+    evita rechazar un reciclable válido.
+    """
     if refinado.get("objeto_reconocido") != "lata":
         return refinado
-    if (original.get("objeto_reconocido") in _OPENAI_NO_METAL_OBJECTS
-            or original.get("objeto_reconocido") not in _OPENAI_CONFUNDIBLES_CON_LATA):
-        logger.warning(
-            "veto OpenAI: heurística convirtió %s en lata",
-            original.get("objeto_reconocido"),
-        )
-        return original
-    if original.get("objeto_reconocido") not in _OPENAI_PET_OBJECTS:
+    if original.get("objeto_reconocido") == "lata":
         return refinado
-    if original.get("tapa") != "rosca_plastico":
-        return refinado
-    if original.get("transparencia") not in ("alta", "media"):
-        return refinado
-
     logger.warning(
-        "veto OpenAI: heurística convirtió botella PET en lata | objeto=%s",
+        "veto OpenAI: heurística convirtió %s en lata; se conserva la lectura de OpenAI",
         original.get("objeto_reconocido"),
     )
     return original

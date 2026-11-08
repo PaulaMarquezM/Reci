@@ -112,9 +112,14 @@ def test_openai_objeto_no_confundible_con_lata_se_conserva():
         assert _revocar_falso_lata_openai(original, refinado) == original
 
 
-def test_openai_botella_opaca_si_puede_ser_lata():
-    # Una "botella" sin rosca transparente sigue pudiendo ser una lata mal leída.
-    original = {"objeto_reconocido": "botella_gaseosa", "transparencia": "ninguna", "tapa": "sellado"}
-    refinado = {**original, "objeto_reconocido": "lata", "brillo": "metalico"}
+def test_heuristica_nunca_inventa_lata():
+    # Prueba real 2026-11-08: OpenAI nunca dijo lata; la heurística convirtió
+    # frascos ámbar "desconocido" y una botella_agua sin tapa en lata.
+    for objeto, tapa in (("desconocido", "domo_plastico"), ("botella_agua", "sin_tapa"),
+                         ("botella_gaseosa", "sellado")):
+        original = {"objeto_reconocido": objeto, "transparencia": "baja", "tapa": tapa,
+                    "color": "ambar", "brillo": "medio_difuso"}
+        refinado = {**original, "objeto_reconocido": "lata", "tapa": "sellado",
+                    "color": "metalico", "brillo": "metalico"}
 
-    assert _revocar_falso_lata_openai(original, refinado) == refinado
+        assert _revocar_falso_lata_openai(original, refinado) == original
