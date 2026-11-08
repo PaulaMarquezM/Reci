@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
 // ─── Clasificador ────────────────────────────────────────────────────────
 // Llama a ia/vision-service: proveedor + MobileNetV3-Large INT8 + heurísticas OpenCV +
-// sistema experto (207 reglas) + votos independientes. Ver
+// sistema experto (208 reglas) + votos independientes. Ver
 // docs/DECISION-SERVICIO-VISION.md.
 async function classifyImage(image: File): Promise<VisionClassifyResult> {
   try {

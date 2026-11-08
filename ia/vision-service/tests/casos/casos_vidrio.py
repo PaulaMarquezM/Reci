@@ -211,4 +211,14 @@ CASOS_VIDRIO = [
         "esperado": "VIDRIO", "categoria": "VIDRIO",
         "atributos": {'objeto_reconocido': 'botella_mocachino', 'confianza_ml': 'baja', 'transparencia': 'baja', 'color': 'negro', 'forma': 'cilindrica_estandar', 'brillo': 'bajo', 'tapa': 'rosca_plastico', 'textura': 'lisa_sin_brillo', 'rigidez': 'rigido'}
     },
+    {
+        "id": "T205", "nombre": "REAL webcam — frasco de vidrio sin tapa, transparencia media (antes desconocido)",
+        "esperado": "VIDRIO", "categoria": "VIDRIO",
+        "atributos": {
+            "objeto_reconocido": "frasco_vidrio", "confianza_ml": "media",
+            "transparencia": "media", "color": "transparente",
+            "forma": "cilindrica_ancha", "brillo": "alto_nitido",
+            "tapa": "sin_tapa", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
 ]

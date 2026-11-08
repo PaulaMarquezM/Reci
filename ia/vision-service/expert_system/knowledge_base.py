@@ -139,6 +139,11 @@ class KnowledgeBase:
             # Frascos gotero de vidrio ámbar (medicina, aceites, CBD): OpenAI los ve
             # opacos y con brillo difuso, y la tapa gotero cuenta como rosca plástica.
             # Prueba real 2026-11-08: 4 de 5 lecturas terminaban en PLASTICO.
+            # Frasco de vidrio con brillo nítido (de espejo, propio del vidrio): con
+            # confianza media R04_B (0.87) quedaba bajo el umbral del backward y se
+            # rechazaba. Prueba real 2026-11-08: frasco sin tapa → desconocido.
+            Rule("R04_E", {"objeto_reconocido": "frasco_vidrio", "brillo": "alto_nitido"}, "VIDRIO", 0.95,
+                 "Frasco de vidrio con brillo nítido de vidrio → vidrio"),
             Rule("R04_D", {"objeto_reconocido": "frasco_vidrio", "color": "ambar"}, "VIDRIO", 0.96,
                  "Frasco de vidrio ámbar (gotero, medicina, aceite) → vidrio aunque la tapa sea plástica"),
             Rule("R01_C", {"objeto_reconocido": "botella_mocachino", "tapa": "rosca_plastico"}, "VIDRIO", 0.96,
