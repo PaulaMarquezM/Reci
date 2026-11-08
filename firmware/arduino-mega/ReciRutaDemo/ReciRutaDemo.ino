@@ -83,8 +83,11 @@ CaraReci caraActual = CaraReci::SinDibujar;
 bool qrVisible = false;
 
 // HC-SR04 frontal: freno de seguridad mientras RECI esta en ruta.
-constexpr uint8_t kTrigFrontal = 22;
-constexpr uint8_t kEchoFrontal = 23;
+// Cableado real (prueba 2026-11-08, tapando cada sensor con la mano): el
+// sensor del frente responde en D26/D27. El de adentro y el lateral no
+// respondieron en ningún pin: revisar sus cables TRIG/ECHO/5V/GND.
+constexpr uint8_t kTrigFrontal = 26;
+constexpr uint8_t kEchoFrontal = 27;
 constexpr unsigned long kDistanciaSeguraCm = 20;
 constexpr unsigned long kRevisionObstaculoMs = 100UL;
 constexpr unsigned long kEchoTimeoutUs = 25000UL;
@@ -95,19 +98,18 @@ constexpr unsigned long kFrenteLibreAntesDeReanudarMs = 1000UL;
 // HC-SR04 trasero (el tercer ultrasónico): mira hacia atrás y frena a RECI
 // cuando regresa en reversa. Si no responde (sin cable), la reversa avanza
 // sin freno, así que móntalo antes de usar BASE desde la app.
-// Cableado real (prueba 2026-11-08): el sensor del hueco quedó en D26/D27,
-// así que el trasero usa D24/D25.
-constexpr uint8_t kTrigTrasero = 24;
-constexpr uint8_t kEchoTrasero = 25;
+constexpr uint8_t kTrigTrasero = 22;
+constexpr uint8_t kEchoTrasero = 23;
 
 // HC-SR04 interno (el que estaba al costado): mira el hueco donde se deja la
 // botella. Solo se busca botella durante kBuscarBotellaTrasPirMs después de
 // que el PIR ve a alguien; así el sensor no dispara fotos con el hueco vacío.
 // CALIBRACION: con la botella puesta, BOTELLA? debe dar <= kDistanciaBotellaCm.
-constexpr uint8_t kTrigBotella = 26;
-constexpr uint8_t kEchoBotella = 27;
-// Hueco vacío mide ~28 cm; con 10 cm una botella acostada no lo disparaba.
-constexpr long kDistanciaBotellaCm = 20;
+constexpr uint8_t kTrigBotella = 24;
+constexpr uint8_t kEchoBotella = 25;
+// Hueco vacío mide ~11 cm (sensor en D24/D25, prueba 2026-11-08). Una
+// botella acostada lo baja a ~4-7 cm; 8 cm deja margen sin disparar en vacío.
+constexpr long kDistanciaBotellaCm = 8;
 constexpr unsigned long kBuscarBotellaTrasPirMs = 60000UL;
 // Por debajo de ~3 cm el HC-SR04 no mide bien: se descarta como ruido.
 constexpr long kDistanciaBotellaMinCm = 3;
@@ -1171,12 +1173,14 @@ void procesarComando(char* entrada) {
     Serial.print(atras);
     Serial.print(F(" cm  botella="));
     Serial.print(botella);
-    Serial.println(F(" cm  (-1 = sin lectura)"));
+    Serial.print(F(" cm  pir="));
+    Serial.print(digitalRead(kPirPin) == HIGH ? F("HIGH") : F("LOW"));
+    Serial.println(F("  (-1 = sin lectura)"));
   } else if (es(entrada, "BOTELLA?") || es(entrada, "BOTELLA")) {
     const long distancia = distanciaBotellaCm();
     Serial.print(F("RECI: sensor de botella = "));
     if (distancia < 0) {
-      Serial.println(F("sin lectura. Revisa TRIG D26 / ECHO D27 / 5V / GND."));
+      Serial.println(F("sin lectura. Revisa TRIG D24 / ECHO D25 / 5V / GND."));
     } else {
       Serial.print(distancia);
       Serial.println(F(" cm"));
