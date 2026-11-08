@@ -412,7 +412,10 @@ class Reci:
             except requests.RequestException as error:
                 print(f"CALLS: /next falló: {error}")
                 continue
-            if not llamada or llamada.get("status") != "pending":
+            # /next también devuelve llamadas "in_progress" (p. ej. si este
+            # programa se reinició a media ruta): se retoman en vez de
+            # ignorarlas, porque si no bloquean la cola para siempre.
+            if not llamada or llamada.get("status") not in ("pending", "in_progress"):
                 continue
             ruta = RUTAS_DEMO.get(str(llamada.get("point_name", "")).strip().lower())
             if ruta is None:
@@ -430,7 +433,9 @@ class Reci:
         while True:
             linea = cola.get()
             llamada = self.llamada_activa
-            if llamada and f"Llegada estimada: {llamada['ruta']}" in linea:
+            # "ya esta en" = la llamaron al punto donde ya estaba.
+            if llamada and (f"Llegada estimada: {llamada['ruta']}" in linea
+                            or f"RECI ya esta en {llamada['ruta']}" in linea):
                 self._llegada(llamada)
             elif "BOTELLA: detectada" in linea:
                 self.clasificar_en_segundo_plano()
