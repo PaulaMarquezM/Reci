@@ -64,3 +64,39 @@ def test_openai_carton_termina_en_organico_y_no_en_lata():
 
     assert atributos["objeto_reconocido"] == "carton"
     assert conclusion == "ORGANICO"
+
+
+def test_openai_vidrio_no_se_convierte_en_lata_por_heuristica():
+    # Prueba real con la webcam (2026-11-08): frasco de vidrio sin tapa sobre
+    # la mesa beige. La heurística veía "metal" por la baja saturación.
+    for objeto in ("frasco_vidrio", "botella_cerveza_vidrio", "botella_jugo_vidrio", "vaso_vidrio"):
+        original = {"objeto_reconocido": objeto, "transparencia": "media", "tapa": "sin_tapa"}
+        refinado = {**original, "objeto_reconocido": "lata", "tapa": "sellado", "brillo": "metalico"}
+
+        assert _revocar_falso_lata_openai(original, refinado) == original
+
+
+def test_openai_frasco_vidrio_poco_saturado_termina_en_vidrio():
+    import cv2
+    import numpy as np
+
+    from expert_system.inference_engine import InferenceEngine
+    from vision.visual_heuristics import refinar_atributos_api
+
+    # Mesa beige poco saturada con un frasco gris claro: reproduce las
+    # señales (sat ~20-35, mucho blanco) que disparaban "metal".
+    img = np.full((240, 320, 3), (200, 210, 215), np.uint8)
+    cv2.rectangle(img, (120, 40), (200, 200), (225, 228, 230), -1)
+    original = {
+        "objeto_reconocido": "frasco_vidrio", "confianza_ml": "alta", "forma": "cilindrica_ancha",
+        "color": "transparente", "transparencia": "media", "brillo": "alto_nitido",
+        "tapa": "sin_tapa", "textura": "lisa_brillante", "rigidez": "rigido",
+    }
+
+    atributos = _revocar_falso_lata_openai(original, refinar_atributos_api(dict(original), img))
+    engine = InferenceEngine()
+    engine.cargar_hechos(atributos)
+    conclusion, _, _ = engine.ejecutar()
+
+    assert atributos["objeto_reconocido"] == "frasco_vidrio"
+    assert conclusion == "VIDRIO"

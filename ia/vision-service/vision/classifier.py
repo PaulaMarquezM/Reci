@@ -181,6 +181,12 @@ _OPENAI_PET_OBJECTS = frozenset({
 _OPENAI_NO_METAL_OBJECTS = frozenset({
     "carton", "vaso_carton", "tetra_pak", "papel_servilleta",
     "cascara_fruta", "restos_comida",
+    # Vidrio: sobre la mesa beige de la webcam el frasco tiene poca saturación
+    # y la heurística lo marcaba como "metal mate"/"plateado" (prueba real
+    # 2026-11-08: frasco de vidrio y frasco de base de maquillaje → lata).
+    "frasco_vidrio", "botella_cerveza_vidrio", "botella_salsa_vidrio",
+    "botella_jugo_vidrio", "botella_mocachino", "botella_pony_malta",
+    "vaso_vidrio",
 })
 
 

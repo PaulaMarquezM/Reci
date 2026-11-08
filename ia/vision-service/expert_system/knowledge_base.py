@@ -122,6 +122,27 @@ class KnowledgeBase:
 
             Rule("R18", {"objeto_reconocido": "lata",                  "confianza_ml": "alta"}, "LATA",      1.00, "Lata de aluminio identificada — no pertenece a ningún compartimento"),
 
+            # Confianza media para los objetos del nivel 1 que solo tenían "alta".
+            # Sin estas reglas, un objeto reconocido con confianza media que no
+            # calza en ninguna regla de atributos terminaba en DESCONOCIDO
+            # (prueba real 2026-11-08: frasco de vidrio sin tapa → desconocido).
+            # CF menor que la versión "alta" pero sobre el umbral de apertura (0.75).
+            Rule("R02_B", {"objeto_reconocido": "botella_cerveza_vidrio","confianza_ml": "media"}, "VIDRIO",   0.88, "Probable botella de cerveza con confianza media — vidrio"),
+            Rule("R03_B", {"objeto_reconocido": "botella_salsa_vidrio",  "confianza_ml": "media"}, "VIDRIO",   0.87, "Probable botella de salsa con confianza media — vidrio"),
+            Rule("R04_B", {"objeto_reconocido": "frasco_vidrio",         "confianza_ml": "media"}, "VIDRIO",   0.87, "Probable frasco de vidrio con confianza media — conserva, mermelada o cosmético"),
+            Rule("R05_B", {"objeto_reconocido": "botella_jugo_vidrio",   "confianza_ml": "media"}, "VIDRIO",   0.86, "Probable botella de jugo en vidrio con confianza media"),
+            Rule("R06_B", {"objeto_reconocido": "botella_agua",          "confianza_ml": "media"}, "PLASTICO", 0.88, "Probable botella de agua con confianza media — PET"),
+            Rule("R07_B", {"objeto_reconocido": "botella_gaseosa",       "confianza_ml": "media"}, "PLASTICO", 0.88, "Probable botella de gaseosa con confianza media — PET"),
+            Rule("R08_B", {"objeto_reconocido": "botella_energizante",   "confianza_ml": "media"}, "PLASTICO", 0.87, "Probable botella energizante con confianza media — plástico"),
+            Rule("R10_B", {"objeto_reconocido": "vaso_plastico",         "confianza_ml": "media"}, "PLASTICO", 0.88, "Probable vaso plástico con confianza media"),
+            Rule("R11_B", {"objeto_reconocido": "yogur_plastico",        "confianza_ml": "media"}, "PLASTICO", 0.87, "Probable envase de yogur con confianza media — plástico"),
+            Rule("R12_B", {"objeto_reconocido": "funda_plastico",        "confianza_ml": "media"}, "PLASTICO", 0.86, "Probable funda plástica con confianza media"),
+            Rule("R13_B", {"objeto_reconocido": "cascara_fruta",         "confianza_ml": "media"}, "ORGANICO", 0.88, "Probable cáscara de fruta con confianza media — orgánico"),
+            Rule("R14_B", {"objeto_reconocido": "restos_comida",         "confianza_ml": "media"}, "ORGANICO", 0.88, "Probables restos de comida con confianza media — orgánico"),
+            Rule("R15_B", {"objeto_reconocido": "papel_servilleta",      "confianza_ml": "media"}, "ORGANICO", 0.86, "Probable servilleta o papel con confianza media"),
+            Rule("R16_B", {"objeto_reconocido": "carton",                "confianza_ml": "media"}, "ORGANICO", 0.86, "Probable cartón con confianza media"),
+            Rule("R17_B", {"objeto_reconocido": "vaso_carton",           "confianza_ml": "media"}, "ORGANICO", 0.85, "Probable vaso de cartón con confianza media"),
+
             # Productos ecuatorianos/manabitas agregados
             Rule("R19_A", {"objeto_reconocido": "botella_fioravanti",      "confianza_ml": "alta"}, "PLASTICO",  0.97, "Fioravanti identificada — gaseosa ecuatoriana en botella PET oscura"),
             Rule("R19_B", {"objeto_reconocido": "botella_aceite_plastico", "confianza_ml": "alta"}, "PLASTICO",  0.97, "Aceite de cocina (Alesol/El Cocinero) identificado — plástico semitransparente"),
