@@ -176,4 +176,24 @@ CASOS_VIDRIO = [
             "tapa": "sin_tapa", "textura": "lisa_brillante", "rigidez": "rigido"
         }
     },
+    {
+        "id": "T200", "nombre": "REAL webcam — frasco de base de maquillaje (vidrio) con tapa plástica",
+        "esperado": "VIDRIO", "categoria": "VIDRIO",
+        "atributos": {
+            "objeto_reconocido": "frasco_vidrio", "confianza_ml": "media",
+            "transparencia": "alta", "color": "transparente",
+            "forma": "cilindrica_estandar", "brillo": "alto_nitido",
+            "tapa": "rosca_plastico", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
+    {
+        "id": "T201", "nombre": "REAL webcam — frasco de vidrio sin tapa (antes salía lata)",
+        "esperado": "VIDRIO", "categoria": "VIDRIO",
+        "atributos": {
+            "objeto_reconocido": "frasco_vidrio", "confianza_ml": "media",
+            "transparencia": "alta", "color": "transparente",
+            "forma": "cilindrica_ancha", "brillo": "alto_nitido",
+            "tapa": "sin_tapa", "textura": "lisa_brillante", "rigidez": "rigido"
+        }
+    },
 ]

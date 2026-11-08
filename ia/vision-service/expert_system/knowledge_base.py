@@ -130,6 +130,12 @@ class KnowledgeBase:
             Rule("R02_B", {"objeto_reconocido": "botella_cerveza_vidrio","confianza_ml": "media"}, "VIDRIO",   0.88, "Probable botella de cerveza con confianza media — vidrio"),
             Rule("R03_B", {"objeto_reconocido": "botella_salsa_vidrio",  "confianza_ml": "media"}, "VIDRIO",   0.87, "Probable botella de salsa con confianza media — vidrio"),
             Rule("R04_B", {"objeto_reconocido": "frasco_vidrio",         "confianza_ml": "media"}, "VIDRIO",   0.87, "Probable frasco de vidrio con confianza media — conserva, mermelada o cosmético"),
+            # Frasco de vidrio con tapa plástica (cosméticos, conservas): la tapa no
+            # decide el material del cuerpo. Sin esta regla R60/R109 (rosca plástica)
+            # ganaban por poco (prueba real 2026-11-08: base de maquillaje → plástico).
+            Rule("R04_C", {"objeto_reconocido": "frasco_vidrio", "brillo": "alto_nitido",
+                           "tapa": "rosca_plastico"}, "VIDRIO", 0.93,
+                 "Frasco de vidrio con brillo nítido y tapa plástica → vidrio (la tapa no define el cuerpo)"),
             Rule("R05_B", {"objeto_reconocido": "botella_jugo_vidrio",   "confianza_ml": "media"}, "VIDRIO",   0.86, "Probable botella de jugo en vidrio con confianza media"),
             Rule("R06_B", {"objeto_reconocido": "botella_agua",          "confianza_ml": "media"}, "PLASTICO", 0.88, "Probable botella de agua con confianza media — PET"),
             Rule("R07_B", {"objeto_reconocido": "botella_gaseosa",       "confianza_ml": "media"}, "PLASTICO", 0.88, "Probable botella de gaseosa con confianza media — PET"),

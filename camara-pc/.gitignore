@@ -3,4 +3,4 @@
 __pycache__/
 metricas.csv
 fotos_prueba/
-pruebas_sin_mega.csv
+pruebas_sin_mega*.csv

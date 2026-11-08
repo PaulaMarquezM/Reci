@@ -32,11 +32,18 @@ COLUMNAS = ["fecha", "esperado", "resultado", "confianza", "acierto",
             "proveedor_f1", "proveedor_f2", "proveedor_f3",
             "local_f1", "local_f2", "local_f3",
             "objeto_f1", "objeto_f2", "objeto_f3",
-            "regla_f1", "regla_f2", "regla_f3", "segundos"]
+            "regla_f1", "regla_f2", "regla_f3", "segundos",
+            "atributos_f1", "atributos_f2", "atributos_f3"]
 
 # Tecla para marcar qué objeto pusiste antes de clasificar (para medir aciertos).
 ESPERADOS = {ord("1"): "plastico", ord("2"): "vidrio", ord("3"): "lata",
              ord("4"): "organico", ord("0"): ""}
+
+
+def _atributos_texto(resultado):
+    """Atributos que vio el proveedor y entraron al sistema experto, en una línea."""
+    atributos = resultado.get("atributos") or {}
+    return " ".join(f"{k}={v}" for k, v in atributos.items()) or "-"
 
 
 class Prueba:
@@ -86,6 +93,7 @@ class Prueba:
                 print(f"  foto {i + 1}: proveedor={prov[0]} ({prov[1]:.2f}) · "
                       f"local={loc[0]} ({loc[1]:.2f}) · objeto={objeto} · "
                       f"regla={resultado.get('rule_applied', '-')}")
+                print(f"          atributos: {_atributos_texto(resultado)}")
 
             material, confianza = decidir(fotos)
             material = material or "desconocido"
@@ -104,6 +112,11 @@ class Prueba:
     def _guardar(self, sello, material, confianza, acierto, fotos, crudos, segundos):
         def col(fuente):
             return [f"{f.get(fuente, ('-', 0))[0]}:{f.get(fuente, ('-', 0))[1]:.2f}" for f in fotos]
+        if CSV_PRUEBAS.exists():
+            with CSV_PRUEBAS.open(encoding="utf-8") as archivo:
+                if next(csv.reader(archivo), None) != COLUMNAS:
+                    # CSV de una versión anterior sin las mismas columnas: se archiva.
+                    CSV_PRUEBAS.rename(CSV_PRUEBAS.with_name(f"pruebas_sin_mega_{sello}.csv"))
         nuevo = not CSV_PRUEBAS.exists()
         with CSV_PRUEBAS.open("a", newline="", encoding="utf-8") as archivo:
             escritor = csv.writer(archivo)
@@ -113,7 +126,8 @@ class Prueba:
                                *col(FUENTE_PROVEEDOR), *col(FUENTE_LOCAL),
                                *[(c.get("atributos") or {}).get("objeto_reconocido", "") for c in crudos],
                                *[c.get("rule_applied", "") for c in crudos],
-                               f"{segundos:.1f}"])
+                               f"{segundos:.1f}",
+                               *[_atributos_texto(c) for c in crudos]])
 
 
 def main():
