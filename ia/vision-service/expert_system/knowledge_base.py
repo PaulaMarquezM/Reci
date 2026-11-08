@@ -208,7 +208,6 @@ class KnowledgeBase:
             # PLÁSTICO — señales visuales fuertes
             Rule("R30", {"transparencia": "alta",    "forma": "conica",        "tapa": "sin_tapa"},          "PLASTICO", 0.97, "Cónico transparente sin tapa → vaso plástico de cafetería"),
             Rule("R31", {"transparencia": "alta",    "forma": "conica",        "tapa": "domo_plastico"},      "PLASTICO", 0.98, "Cónico con tapa domo → vaso plástico con tapa de cafetería"),
-            Rule("R32", {"transparencia": "alta",    "brillo": "medio_difuso", "tapa": "rosca_plastico"},     "PLASTICO", 0.92, "Transparente con brillo difuso y tapa rosca plástica → botella PET"),
             Rule("R33", {"color": "variado_vivo",    "tapa": "rosca_plastico", "forma": "cilindrica_delgada"},"PLASTICO", 0.93, "Etiqueta muy colorida en botella delgada → energizante o alcohólica en plástico"),
             Rule("R34", {"transparencia": "ninguna", "color": "blanco_opaco",  "forma": "cilindrica_ancha"},  "PLASTICO", 0.94, "Blanco opaco cilíndrico ancho → yogur plástico"),
             Rule("R35", {"rigidez": "flexible",      "color": "negro"},                                       "PLASTICO", 0.93, "Flexible y negro → funda plástica"),
@@ -227,7 +226,6 @@ class KnowledgeBase:
             Rule("R46", {"color": "blanco_opaco", "forma": "irregular",         "rigidez": "rigido", "brillo": "medio_difuso"},   "PLASTICO", 0.91, "Blanco opaco forma irregular rígido → recipiente o plato plástico redondo visto de arriba"),
 
             # Vaso de vidrio — transparente, brillo nítido, ancho o cónico sin tapa
-            Rule("R47", {"transparencia": "alta", "brillo": "alto_nitido", "forma": "cilindrica_ancha",   "tapa": "sin_tapa"},    "VIDRIO",   0.94, "Transparente con brillo nítido de vidrio, ancho y sin tapa → vaso tumbler de vidrio"),
             Rule("R48", {"transparencia": "alta", "brillo": "alto_nitido", "forma": "conica",             "tapa": "sin_tapa"},    "VIDRIO",   0.91, "Transparente nítido cónico sin tapa → vaso de vidrio de diseño"),
             Rule("R49", {"transparencia": "alta", "brillo": "alto_nitido", "rigidez": "rigido",           "tapa": "sin_tapa",
                           "textura": "lisa_brillante"},                                                                            "VIDRIO",   0.90, "Transparente nítido rígido sin tapa y liso brillante → vaso o recipiente de vidrio"),
@@ -306,10 +304,6 @@ class KnowledgeBase:
                              "color": "variado_vivo", "textura": "lisa_brillante"},
                  "PLASTICO", 0.94,
                  "Flexible sellado con colores vivos y textura lisa → empaque de snack plástico (Doritos/chifles)"),
-            Rule("R69_S2", {"rigidez": "flexible", "tapa": "sellado",
-                             "brillo": "metalico", "forma": "rectangular_plana"},
-                 "PLASTICO", 0.93,
-                 "Flexible sellado metálico rectangular → empaque de snack metalizado (chitos/papas fritas)"),
 
             # ── Pitillo / sorbete ─────────────────────────────────────────────
             # R96 ya cubre el caso visual básico. Estas reglas refuerzan con objeto reconocido.
@@ -533,11 +527,6 @@ class KnowledgeBase:
                  "Tetra Pak rectangular rígido reconocido → cartón compuesto, no reciclable en RECI"),
 
             # Pulp / Tampico / Frugos — jugo plástico, botella opaca colorida
-            Rule("R121", {"color": "variado_vivo", "forma": "cilindrica_estandar",
-                          "tapa": "rosca_plastico", "transparencia": "ninguna",
-                          "brillo": "bajo"},
-                 "PLASTICO", 0.91,
-                 "Botella opaca colorida estándar con tapa rosca → jugo plástico tipo Pulp/Tampico/Frugos"),
 
             # Enjuague bucal (Colgate Plax, Listerine) — delgado, blanco o colorido
             Rule("R122", {"color": "blanco_opaco", "forma": "cilindrica_delgada",

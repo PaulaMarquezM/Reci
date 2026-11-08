@@ -4,7 +4,7 @@ Servicio FastAPI privado que clasifica una foto de residuo como `vidrio`,
 `plastico` o `desconocido`. Cada foto se analiza de forma independiente con
 el MobileNetV3-Large/TFLite activo y con Claude, Gemini u OpenAI. Los
 atributos del proveedor se refinan con OpenCV y pasan por el sistema experto
-de Reci (193 reglas, CF MYCIN, meta-reglas, forward + backward chaining).
+de Reci (189 reglas, CF MYCIN, meta-reglas, forward + backward chaining).
 El proveedor y el modelo local conservan votos independientes; no se fusionan
 dentro de una misma foto.
 
@@ -206,7 +206,7 @@ proxy que limite su acceso al backend de Reci — igual que `face-service`.
 
 | De `dev/RECI` | Estado aquí |
 |---|---|
-| `expert_system/` completo (193 reglas, CF MYCIN, meta-reglas) | ✅ Portado y ampliado con las correcciones de RECI2 — es Python puro, sin dependencia de hardware ni archivos |
+| `expert_system/` completo (189 reglas, CF MYCIN, meta-reglas) | ✅ Portado y ampliado con las correcciones de RECI2 — es Python puro, sin dependencia de hardware ni archivos |
 | `vision/visual_heuristics.py` | ✅ Portado y ampliado; el proveedor se refina de forma independiente antes de emitir su voto |
 | `vision/attribute_extractor.py` (llamada a Claude/Gemini + prompt) | ⚠️ Reescrito en `vision/classifier.py` — soporta Claude, Gemini y OpenAI, con menos reintentos |
 | MobileNetV3-Large local/TFLite INT8 | ✅ Activo tras el experimento de agosto; `vision/local_model.py` lo carga una vez y `vision/voting.py` emite su voto independiente. MobileNetV2 se conserva como respaldo de comparación |
