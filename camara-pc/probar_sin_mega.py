@@ -41,9 +41,21 @@ ESPERADOS = {ord("1"): "plastico", ord("2"): "vidrio", ord("3"): "lata",
 
 
 def _atributos_texto(resultado):
-    """Atributos que vio el proveedor y entraron al sistema experto, en una línea."""
+    """Atributos que entraron al sistema experto, en una línea.
+
+    Si OpenCV/el veto cambiaron algo respecto de lo que dijo el proveedor, lo
+    agrega al final como "| heuristica: clave proveedor->final".
+    """
     atributos = resultado.get("atributos") or {}
-    return " ".join(f"{k}={v}" for k, v in atributos.items()) or "-"
+    texto = " ".join(f"{k}={v}" for k, v in atributos.items()) or "-"
+    proveedor = resultado.get("atributos_proveedor") or {}
+    cambios = [f"{k} {proveedor.get(k)}->{v}" for k, v in atributos.items()
+               if k in proveedor and proveedor.get(k) != v]
+    if cambios:
+        texto += " | heuristica: " + ", ".join(cambios)
+    elif proveedor:
+        texto += " | heuristica: sin cambios"
+    return texto
 
 
 class Prueba:

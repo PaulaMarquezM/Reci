@@ -31,6 +31,17 @@ export type VisionClassifyResult = {
   // Diagnóstico: los 9 atributos visuales que vio el proveedor (ya refinados
   // con OpenCV) y que entraron al sistema experto. Solo texto, sin la imagen.
   atributos?: Record<string, string>
+  // Diagnóstico: lo que dijo el proveedor antes de OpenCV y del veto.
+  atributos_proveedor?: Record<string, string>
+}
+
+function soloTexto(valor: unknown): Record<string, string> | undefined {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return undefined
+  const salida: Record<string, string> = {}
+  for (const [clave, v] of Object.entries(valor)) {
+    if (typeof v === 'string') salida[clave] = v
+  }
+  return Object.keys(salida).length > 0 ? salida : undefined
 }
 
 // Llama a ia/vision-service (proveedor + MobileNetV3-Large INT8 + heurísticas OpenCV +
@@ -89,14 +100,10 @@ export async function classifyMaterial(image: File): Promise<VisionClassifyResul
     rule_applied: typeof ruleApplied === 'string' ? ruleApplied : 'desconocido',
   }
 
-  const rawAtributos = (body as { atributos?: unknown }).atributos
-  if (rawAtributos && typeof rawAtributos === 'object' && !Array.isArray(rawAtributos)) {
-    const atributos: Record<string, string> = {}
-    for (const [clave, valor] of Object.entries(rawAtributos)) {
-      if (typeof valor === 'string') atributos[clave] = valor
-    }
-    if (Object.keys(atributos).length > 0) result.atributos = atributos
-  }
+  const atributos = soloTexto((body as { atributos?: unknown }).atributos)
+  if (atributos) result.atributos = atributos
+  const atributosProveedor = soloTexto((body as { atributos_proveedor?: unknown }).atributos_proveedor)
+  if (atributosProveedor) result.atributos_proveedor = atributosProveedor
 
   if (providerResult && typeof providerResult === 'object') {
     const providerMaterial = (providerResult as { material?: unknown }).material

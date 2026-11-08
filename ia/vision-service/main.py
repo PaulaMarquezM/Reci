@@ -172,7 +172,7 @@ async def classify(image: Annotated[UploadFile, File(...)]) -> dict[str, Any]:
     decoded_image = decode_image(raw)
 
     try:
-        atributos = _classifier.clasificar(raw, image.content_type)
+        atributos, atributos_proveedor = _classifier.clasificar_con_original(raw, image.content_type)
     except VisionProviderError as exc:
         logger.warning("proveedor de visión no disponible: %s", exc)
         raise HTTPException(status_code=503, detail="El proveedor de visión no respondió") from exc
@@ -229,6 +229,8 @@ async def classify(image: Annotated[UploadFile, File(...)]) -> dict[str, Any]:
         "rule_applied": rule_applied,
         "conclusion_se": conclusion,
         "atributos": atributos,
+        # Diagnóstico: lo que dijo el proveedor antes de OpenCV y del veto.
+        "atributos_proveedor": atributos_proveedor,
         "reglas_disparadas": len(reglas),
         "vision_proveedor": _classifier.vision_api,
         "vision_modelo": _classifier.modelo_primario,

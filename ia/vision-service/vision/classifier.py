@@ -418,7 +418,15 @@ class VisionClassifier:
         raise VisionProviderError(f"OpenAI no respondió: {ultimo_error}")
 
     def clasificar(self, imagen_bytes: bytes, mime_type: str) -> dict:
+        """Atributos ya refinados (contrato original)."""
+        return self.clasificar_con_original(imagen_bytes, mime_type)[0]
+
+    def clasificar_con_original(self, imagen_bytes: bytes, mime_type: str) -> tuple[dict, dict]:
         """
+        Igual que clasificar(), pero devuelve también los atributos tal como
+        los entregó el proveedor, antes de OpenCV y del veto. Sirve para saber
+        si un cambio (p. ej. "lata") lo dijo el proveedor o la heurística.
+
         Recibe los bytes crudos de la imagen (JPEG/PNG/WebP) y devuelve los
         9 atributos visuales, ya refinados con OpenCV (lata, vidrio, metal).
 
@@ -445,4 +453,4 @@ class VisionClassifier:
         if self.vision_api == "openai":
             atributos = _revocar_falso_lata_openai(atributos_originales, atributos)
 
-        return atributos
+        return atributos, atributos_originales
