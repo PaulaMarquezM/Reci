@@ -50,8 +50,15 @@ constexpr uint8_t kServoCentro = 65;     // en 90 quedaba girado a la derecha
 constexpr uint8_t kServoIzquierda = 30;
 constexpr uint8_t kServoDerecha = 100;
 constexpr unsigned long kCompuertaAbiertaMs = 2000UL;
+// Después de reciclar, la LCD pide escanear el QR y la OLED lo muestra este
+// tiempo; luego RECI vuelve solo al saludo, listo para otra botella.
+constexpr unsigned long kMostrarPremiosMs = 10000UL;
+// "No estoy seguro" y los rechazos (lata, papel) se ven este tiempo.
+constexpr unsigned long kMostrarAvisoMs = 5000UL;
 
 Servo servoCompuerta;
+bool reposoPendiente = false;
+unsigned long volverAReposoEn = 0;
 
 // OLED SSD1306 128x64 por I2C: Mega SDA=20, SCL=21.
 constexpr uint8_t kDireccionOled = 0x3C;
@@ -105,7 +112,7 @@ constexpr unsigned long kRevisionBotellaMs = 150UL;
 // La botella debe quedarse quieta este tiempo; una mano que pasa no cuenta.
 constexpr unsigned long kBotellaEstableMs = 800UL;
 // Tras una lectura, el hueco debe vaciarse y esperar esto antes de otra.
-constexpr unsigned long kEsperaEntreBotellasMs = 8000UL;
+constexpr unsigned long kEsperaEntreBotellasMs = 10000UL;
 
 // PIR de bienvenida: el esquema de RECI conecta OUT al pin 28 del Mega.
 // Solo genera un evento de presencia cuando el robot está detenido; nunca
@@ -489,6 +496,26 @@ void cerrarCompuertas() {
   compuertaActiva = CompuertaActiva::Ninguna;
 }
 
+// Programa el regreso al saludo inicial (borra QR y avisos de la pantalla).
+void programarReposo(unsigned long enMs) {
+  reposoPendiente = true;
+  volverAReposoEn = millis() + enMs;
+}
+
+void cancelarReposo() {
+  reposoPendiente = false;
+}
+
+void actualizarReposo() {
+  if (!reposoPendiente) return;
+  if (static_cast<long>(millis() - volverAReposoEn) < 0) return;
+  reposoPendiente = false;
+  caraActual = CaraReci::SinDibujar;  // fuerza a redibujar aunque haya un QR
+  mostrarCara(CaraReci::Lista);
+  mostrarLcd("Hola, soy RECI", "Recicla y gana");
+  informar(F("PANTALLA: de vuelta al saludo."));
+}
+
 void irAPunto(Punto solicitado);
 
 bool abrirCompuerta(CompuertaActiva solicitada) {
@@ -512,6 +539,7 @@ bool abrirCompuerta(CompuertaActiva solicitada) {
     informar(F("COMPUERTA: plastico, gira a la izquierda."));
   }
 
+  cancelarReposo();
   compuertaActiva = solicitada;
   cerrarCompuertaEn = millis() + kCompuertaAbiertaMs;
   mostrarCara(CaraReci::Feliz);
@@ -523,11 +551,15 @@ void actualizarCompuerta() {
   if (static_cast<long>(millis() - cerrarCompuertaEn) < 0) return;
 
   cerrarCompuertas();
-  // No borra el QR al cumplirse los 2 s de la compuerta: la persona debe
-  // tener tiempo suficiente para escanearlo. Una ruta o estado nuevo sí lo
-  // reemplazará mediante mostrarCara().
-  if (!qrVisible) mostrarCara(CaraReci::Lista);
-  mostrarLcd("Gracias!", "Tapa cerrada");
+  // El QR se queda kMostrarPremiosMs para que la persona lo escanee; después
+  // actualizarReposo() vuelve al saludo.
+  if (qrVisible) {
+    mostrarLcd("Escanea tu QR", "para tus premios");
+  } else {
+    mostrarCara(CaraReci::Feliz);
+    mostrarLcd("Gracias!", "Sigue reciclando");
+  }
+  programarReposo(kMostrarPremiosMs);
   informar(F("COMPUERTA: cerrada."));
 
   const Punto pendiente = destinoPendienteCompuerta;
@@ -698,6 +730,7 @@ void actualizarBotella() {
   Serial.print(F("RECI: BOTELLA: detectada a "));
   Serial.print(distancia);
   Serial.println(F(" cm"));
+  cancelarReposo();
   mostrarCara(CaraReci::Movimiento);
   mostrarLcd("Analizando residuo", "No lo retires");
 }
@@ -955,6 +988,7 @@ void procesarMensajeLcd(char* entrada) {
   }
   *separador = '\0';
   mostrarLcd(lineas, separador + 1);
+  programarReposo(kMostrarAvisoMs);
 }
 
 void procesarCaraEsp32(const char* entrada) {
@@ -997,11 +1031,13 @@ bool procesarComandoCompacto(char* entrada) {
     mostrarCara(CaraReci::Lista);
     mostrarLcd("Ubica botella", "Frente a camara");
   } else if (es(entrada, "@A")) {
+    cancelarReposo();
     mostrarCara(CaraReci::Movimiento);
     mostrarLcd("Analizando residuo", "No lo retires");
   } else if (es(entrada, "@U")) {
     mostrarCara(CaraReci::Alerta);
     mostrarLcd("No estoy seguro", "Intenta de nuevo");
+    programarReposo(kMostrarAvisoMs);
   } else if (es(entrada, "@P")) {
     abrirCompuerta(CompuertaActiva::Plastico);
   } else if (es(entrada, "@V")) {
@@ -1013,8 +1049,9 @@ bool procesarComandoCompacto(char* entrada) {
   } else if (empiezaCon(entrada, "@G:")) {
     mostrarSaludoEsp32(entrada + strlen("@G:"));
   } else if (empiezaCon(entrada, "@Q:")) {
-    mostrarLcd("Escanea el QR", "Para tus puntos");
+    mostrarLcd("Escanea tu QR", "para tus premios");
     mostrarQrReal(entrada + strlen("@Q:"));
+    programarReposo(kMostrarPremiosMs);
   } else {
     return false;
   }
@@ -1031,8 +1068,9 @@ void procesarComando(char* entrada) {
   } else if (empiezaCon(entrada, "CMD:FACE:")) {
     procesarCaraEsp32(entrada);
   } else if (empiezaCon(entrada, "CMD:QR:")) {
-    mostrarLcd("Escanea el QR", "Para tus puntos");
+    mostrarLcd("Escanea tu QR", "para tus premios");
     mostrarQrReal(entrada + strlen("CMD:QR:"));
+    programarReposo(kMostrarPremiosMs);
   } else if (es(entrada, "PING")) {
     // Diagnóstico del regreso Mega -> ESP sin mover ni abrir nada.
     mostrarLcd("PULSO A ESP", "Enviando prueba");
@@ -1230,7 +1268,8 @@ void recibirCaracterCodigoQr(unsigned long duracion) {
 
   recibiendoCodigoQr = false;
   mostrarQrReal(codigoQrRecibido);
-  mostrarLcd("Escanea el QR", "Para tus puntos");
+  mostrarLcd("Escanea tu QR", "para tus premios");
+  programarReposo(kMostrarPremiosMs);
   Serial.print(F("QR: codigo real listo: "));
   Serial.println(codigoQrRecibido);
 }
@@ -1256,11 +1295,13 @@ void procesarPulsoEsp(unsigned long duracion) {
   if (coincidePulsoEsp(duracion, kPulsoQrInicioMs)) {
     iniciarRecepcionCodigoQr();
   } else if (coincidePulsoEsp(duracion, kPulsoAnalizarMs)) {
+    cancelarReposo();
     mostrarCara(CaraReci::Movimiento);
     mostrarLcd("Analizando residuo", "No lo retires");
   } else if (coincidePulsoEsp(duracion, kPulsoDesconocidoMs)) {
     mostrarCara(CaraReci::Alerta);
     mostrarLcd("No estoy seguro", "Intenta de nuevo");
+    programarReposo(kMostrarAvisoMs);
   } else if (coincidePulsoEsp(duracion, kPulsoPlasticoMs)) {
     if (abrirCompuerta(CompuertaActiva::Plastico)) {
       delay(kRetrasoConfirmacionCompuertaMs);
@@ -1297,7 +1338,8 @@ void procesarPulsoEsp(unsigned long duracion) {
     mostrarLcd("Abre la app", "Para tus puntos");
   } else if (coincidePulsoEsp(duracion, kPulsoGraciasMs)) {
     mostrarCara(CaraReci::Feliz);
-    mostrarLcd("Gracias!", "Tapa cerrada");
+    mostrarLcd("Gracias!", "Sigue reciclando");
+    programarReposo(kMostrarAvisoMs);
   } else if (coincidePulsoEsp(duracion, kPulsoPruebaMs)) {
     mostrarLcd("PULSO ESP", "Mega recibe OK");
     informar(F("PULSO ESP -> Mega OK."));
@@ -1479,4 +1521,5 @@ void loop() {
   actualizarPresencia();
   actualizarBotella();
   actualizarCompuerta();
+  actualizarReposo();
 }
