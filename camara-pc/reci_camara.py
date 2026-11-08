@@ -80,6 +80,46 @@ def cargar_env():
         os.environ.setdefault(clave.strip(), valor.strip())
 
 
+def zona_recorte(cuadro):
+    """Devuelve (x1, y1, x2, y2) en píxeles según RECI_RECORTE, o None.
+
+    RECI_RECORTE="x1,y1,x2,y2" en fracciones de la imagen (0 a 1). Sirve para
+    mandar a clasificar solo la bandeja: con la cámara pegada se ve también el
+    fondo (pared, tacho, cables) y eso confunde al proveedor de visión.
+    """
+    texto = os.environ.get("RECI_RECORTE", "").strip()
+    if not texto:
+        return None
+    try:
+        x1, y1, x2, y2 = (float(v) for v in texto.split(","))
+    except ValueError:
+        print(f"AVISO: RECI_RECORTE inválido ({texto}); se usa la imagen completa.")
+        return None
+    if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
+        print(f"AVISO: RECI_RECORTE fuera de rango ({texto}); se usa la imagen completa.")
+        return None
+    alto, ancho = cuadro.shape[:2]
+    return int(x1 * ancho), int(y1 * alto), int(x2 * ancho), int(y2 * alto)
+
+
+def recortar(cuadro):
+    """La parte de la imagen que se manda a clasificar."""
+    zona = zona_recorte(cuadro)
+    if zona is None:
+        return cuadro
+    x1, y1, x2, y2 = zona
+    return cuadro[y1:y2, x1:x2]
+
+
+def marcar_recorte(vista):
+    """Dibuja en la vista previa el rectángulo que se manda a clasificar."""
+    zona = zona_recorte(vista)
+    if zona is not None:
+        x1, y1, x2, y2 = zona
+        cv2.rectangle(vista, (x1, y1), (x2 - 1, y2 - 1), (0, 255, 0), 2)
+    return vista
+
+
 def detectar_puerto_mega():
     candidatos = sorted(glob.glob("/dev/cu.usbmodem*") + glob.glob("/dev/cu.usbserial*")
                         + glob.glob("/dev/ttyACM*") + glob.glob("/dev/ttyUSB*"))
@@ -243,7 +283,7 @@ class Reci:
         cuadro = self.leer_cuadro()
         if cuadro is None:
             return None
-        ok, jpg = cv2.imencode(".jpg", cuadro, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        ok, jpg = cv2.imencode(".jpg", recortar(cuadro), [cv2.IMWRITE_JPEG_QUALITY, 85])
         return jpg.tobytes() if ok else None
 
     # ---------------- clasificación ----------------
@@ -429,7 +469,7 @@ def main():
         while True:
             cuadro = reci.leer_cuadro()
             if cuadro is not None:
-                cv2.imshow("Reci · camara", cuadro)
+                cv2.imshow("Reci · camara", marcar_recorte(cuadro.copy()))
             tecla = cv2.waitKey(30) & 0xFF
             if tecla in (ord("c"), ord("C"), ord(" ")):
                 reci.clasificar_en_segundo_plano()

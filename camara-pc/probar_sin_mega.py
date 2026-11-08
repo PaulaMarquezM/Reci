@@ -24,7 +24,8 @@ from datetime import datetime
 import cv2
 
 from reci_camara import (AQUI, FOTOS_POR_LECTURA, FUENTE_LOCAL, FUENTE_PROVEEDOR,
-                         SEPARACION_FOTOS_S, ReciCloud, cargar_env, decidir, votos_de_foto)
+                         SEPARACION_FOTOS_S, ReciCloud, cargar_env, decidir, marcar_recorte,
+                         recortar, votos_de_foto)
 
 CSV_PRUEBAS = AQUI / "pruebas_sin_mega.csv"
 CARPETA_FOTOS = AQUI / "fotos_prueba"
@@ -92,7 +93,7 @@ class Prueba:
                 cuadro = self.cuadro
                 if cuadro is None:
                     raise RuntimeError("la cámara no entrega imagen")
-                ok, jpg = cv2.imencode(".jpg", cuadro, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                ok, jpg = cv2.imencode(".jpg", recortar(cuadro), [cv2.IMWRITE_JPEG_QUALITY, 85])
                 if not ok:
                     raise RuntimeError("no se pudo codificar la foto")
                 (CARPETA_FOTOS / f"{sello}_f{i + 1}.jpg").write_bytes(jpg.tobytes())
@@ -163,7 +164,7 @@ def main():
         while True:
             cuadro = prueba.leer_cuadro()
             if cuadro is not None:
-                vista = cuadro.copy()
+                vista = marcar_recorte(cuadro.copy())
                 texto = f"Esperado: {prueba.esperado or '-'} | {prueba.ultimo}"
                 cv2.putText(vista, texto, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
                 cv2.putText(vista, texto, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
