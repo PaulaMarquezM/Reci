@@ -190,10 +190,27 @@ _OPENAI_NO_METAL_OBJECTS = frozenset({
 })
 
 
+# Solo una botella (o algo que OpenAI no reconoció) puede ser en realidad una
+# lata mal leída. Con la webcam de la compu OpenCV casi nunca recorta el objeto
+# (contour_area_pct ≈ 0) y las señales de "metal" salen del fondo: una hoja
+# blanca o una mesa clara parecen aluminio. Por eso, si OpenAI ya reconoció un
+# objeto que no se confunde con una lata (funda, vaso, plato, frasco...), la
+# heurística no puede convertirlo en lata (prueba real 2026-11-08: funda de
+# snack, frasco gotero de vidrio y palitos de madera → lata).
+_OPENAI_CONFUNDIBLES_CON_LATA = frozenset({
+    "lata", "desconocido",
+    "botella_agua", "botella_gaseosa", "botella_energizante",
+    "botella_alcoholica_plastico", "botella_jugo_plastico", "botella_fioravanti",
+    "botella_cola_gallito", "botella_gatorade", "botella_aceite_plastico",
+    "botella_enjuague_bucal", "botella_atomizador",
+})
+
+
 def _revocar_falso_lata_openai(original: dict, refinado: dict) -> dict:
     if refinado.get("objeto_reconocido") != "lata":
         return refinado
-    if original.get("objeto_reconocido") in _OPENAI_NO_METAL_OBJECTS:
+    if (original.get("objeto_reconocido") in _OPENAI_NO_METAL_OBJECTS
+            or original.get("objeto_reconocido") not in _OPENAI_CONFUNDIBLES_CON_LATA):
         logger.warning(
             "veto OpenAI: heurística convirtió %s en lata",
             original.get("objeto_reconocido"),

@@ -196,4 +196,19 @@ CASOS_VIDRIO = [
             "tapa": "sin_tapa", "textura": "lisa_brillante", "rigidez": "rigido"
         }
     },
+    {
+        "id": "T202", "nombre": "REAL webcam — frasco gotero ámbar (CBD) con tapa plástica, brillo difuso",
+        "esperado": "VIDRIO", "categoria": "VIDRIO",
+        "atributos": {'objeto_reconocido': 'frasco_vidrio', 'confianza_ml': 'baja', 'transparencia': 'baja', 'color': 'ambar', 'forma': 'cilindrica_ancha', 'brillo': 'medio_difuso', 'tapa': 'rosca_plastico', 'textura': 'lisa_brillante', 'rigidez': 'rigido'}
+    },
+    {
+        "id": "T203", "nombre": "REAL webcam — gotero ámbar leído como mocachino con rosca plástica",
+        "esperado": "VIDRIO", "categoria": "VIDRIO",
+        "atributos": {'objeto_reconocido': 'botella_mocachino', 'confianza_ml': 'baja', 'transparencia': 'baja', 'color': 'ambar', 'forma': 'cilindrica_estandar', 'brillo': 'medio_difuso', 'tapa': 'rosca_plastico', 'textura': 'lisa_brillante', 'rigidez': 'rigido'}
+    },
+    {
+        "id": "T204", "nombre": "REAL webcam — gotero oscuro leído como mocachino negro, brillo bajo",
+        "esperado": "VIDRIO", "categoria": "VIDRIO",
+        "atributos": {'objeto_reconocido': 'botella_mocachino', 'confianza_ml': 'baja', 'transparencia': 'baja', 'color': 'negro', 'forma': 'cilindrica_estandar', 'brillo': 'bajo', 'tapa': 'rosca_plastico', 'textura': 'lisa_sin_brillo', 'rigidez': 'rigido'}
+    },
 ]

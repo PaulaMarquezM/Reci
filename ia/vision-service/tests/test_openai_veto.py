@@ -100,3 +100,21 @@ def test_openai_frasco_vidrio_poco_saturado_termina_en_vidrio():
 
     assert atributos["objeto_reconocido"] == "frasco_vidrio"
     assert conclusion == "VIDRIO"
+
+
+def test_openai_objeto_no_confundible_con_lata_se_conserva():
+    # Prueba real 2026-11-08 (hoja blanca de fondo): una funda de snack y un
+    # vaso reconocidos por OpenAI salían como lata por las señales del fondo.
+    for objeto in ("snack_plastico", "funda_plastico", "vaso_plastico", "plato_plastico"):
+        original = {"objeto_reconocido": objeto, "transparencia": "ninguna", "tapa": "sellado"}
+        refinado = {**original, "objeto_reconocido": "lata", "brillo": "metalico", "rigidez": "rigido"}
+
+        assert _revocar_falso_lata_openai(original, refinado) == original
+
+
+def test_openai_botella_opaca_si_puede_ser_lata():
+    # Una "botella" sin rosca transparente sigue pudiendo ser una lata mal leída.
+    original = {"objeto_reconocido": "botella_gaseosa", "transparencia": "ninguna", "tapa": "sellado"}
+    refinado = {**original, "objeto_reconocido": "lata", "brillo": "metalico"}
+
+    assert _revocar_falso_lata_openai(original, refinado) == refinado

@@ -19,7 +19,7 @@ ia/vision-service:
        color, forma, brillo, tapa, textura, rigidez, confianza)
     2. Heurísticas OpenCV refinan los atributos (corrige lata/vidrio/metal
        mal etiquetados)
-    3. Sistema experto (205 reglas, CF MYCIN, meta-reglas, forward +
+    3. Sistema experto (207 reglas, CF MYCIN, meta-reglas, forward +
        backward chaining) decide la conclusión
     ↓
 { material: "vidrio"|"plastico"|"desconocido", confidence, rule_applied }
@@ -36,7 +36,7 @@ ESP32-CAM reenvía la decisión por UART → Arduino Mega
 - `vision/classifier.py` — llamada a Claude/Gemini + el prompt de
   clasificación (afinado contra capturas reales del campus).
 - `vision/visual_heuristics.py` — heurísticas OpenCV, portadas sin cambios.
-- `expert_system/` — las 205 reglas, CF MYCIN, meta-reglas, backward
+- `expert_system/` — las 207 reglas, CF MYCIN, meta-reglas, backward
   chaining, portadas sin cambios desde `dev/RECI`.
 
 Ver [`ia/vision-service/README.md`](vision-service/README.md) para correrlo

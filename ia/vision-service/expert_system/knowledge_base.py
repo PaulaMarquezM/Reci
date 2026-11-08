@@ -134,8 +134,15 @@ class KnowledgeBase:
             # decide el material del cuerpo. Sin esta regla R60/R109 (rosca plástica)
             # ganaban por poco (prueba real 2026-11-08: base de maquillaje → plástico).
             Rule("R04_C", {"objeto_reconocido": "frasco_vidrio", "brillo": "alto_nitido",
-                           "tapa": "rosca_plastico"}, "VIDRIO", 0.93,
+                           "tapa": "rosca_plastico"}, "VIDRIO", 0.96,
                  "Frasco de vidrio con brillo nítido y tapa plástica → vidrio (la tapa no define el cuerpo)"),
+            # Frascos gotero de vidrio ámbar (medicina, aceites, CBD): OpenAI los ve
+            # opacos y con brillo difuso, y la tapa gotero cuenta como rosca plástica.
+            # Prueba real 2026-11-08: 4 de 5 lecturas terminaban en PLASTICO.
+            Rule("R04_D", {"objeto_reconocido": "frasco_vidrio", "color": "ambar"}, "VIDRIO", 0.96,
+                 "Frasco de vidrio ámbar (gotero, medicina, aceite) → vidrio aunque la tapa sea plástica"),
+            Rule("R01_C", {"objeto_reconocido": "botella_mocachino", "tapa": "rosca_plastico"}, "VIDRIO", 0.96,
+                 "Botella pequeña tipo mocachino con tapa plástica → frasco de vidrio oscuro con gotero"),
             Rule("R05_B", {"objeto_reconocido": "botella_jugo_vidrio",   "confianza_ml": "media"}, "VIDRIO",   0.86, "Probable botella de jugo en vidrio con confianza media"),
             Rule("R06_B", {"objeto_reconocido": "botella_agua",          "confianza_ml": "media"}, "PLASTICO", 0.88, "Probable botella de agua con confianza media — PET"),
             Rule("R07_B", {"objeto_reconocido": "botella_gaseosa",       "confianza_ml": "media"}, "PLASTICO", 0.88, "Probable botella de gaseosa con confianza media — PET"),
