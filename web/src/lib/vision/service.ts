@@ -28,6 +28,9 @@ export type VisionClassifyResult = {
   // Diagnóstico A/B: nunca se añade a vision_votes ni abre una compuerta.
   vision_local_shadow_result?: VisionLocalResult | null
   vision_votes?: VisionVote[]
+  // Diagnóstico: los 9 atributos visuales que vio el proveedor (ya refinados
+  // con OpenCV) y que entraron al sistema experto. Solo texto, sin la imagen.
+  atributos?: Record<string, string>
 }
 
 // Llama a ia/vision-service (proveedor + MobileNetV3-Large INT8 + heurísticas OpenCV +
@@ -84,6 +87,15 @@ export async function classifyMaterial(image: File): Promise<VisionClassifyResul
     material,
     confidence,
     rule_applied: typeof ruleApplied === 'string' ? ruleApplied : 'desconocido',
+  }
+
+  const rawAtributos = (body as { atributos?: unknown }).atributos
+  if (rawAtributos && typeof rawAtributos === 'object' && !Array.isArray(rawAtributos)) {
+    const atributos: Record<string, string> = {}
+    for (const [clave, valor] of Object.entries(rawAtributos)) {
+      if (typeof valor === 'string') atributos[clave] = valor
+    }
+    if (Object.keys(atributos).length > 0) result.atributos = atributos
   }
 
   if (providerResult && typeof providerResult === 'object') {
