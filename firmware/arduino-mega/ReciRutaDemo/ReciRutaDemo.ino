@@ -18,6 +18,7 @@
 #include <Adafruit_SSD1306.h>
 #include <LiquidCrystal_I2C.h>
 #include <Servo.h>
+#include <EEPROM.h>
 #include <qrcode.h>
 
 namespace {
@@ -410,20 +411,55 @@ void mostrarQrReal(const char* codigo) {
   caraActual = CaraReci::SinDibujar;
 }
 
-void escribirMotor(uint8_t pinA, uint8_t pinB, bool adelante, bool invertir) {
+// Potencia PWM por lado (0-255). Los motores no son idénticos: si RECI se
+// va de lado, se baja la del lado más rápido con VEL:I:n o VEL:D:n. Se
+// guarda en EEPROM porque abrir el puerto USB reinicia el Mega.
+constexpr int kEepromPotencia = 0;      // firma + izq + der
+constexpr uint8_t kFirmaPotencia = 0xA5;
+uint8_t potenciaIzq = 255;
+uint8_t potenciaDer = 255;
+
+void cargarPotencias() {
+  if (EEPROM.read(kEepromPotencia) != kFirmaPotencia) return;
+  potenciaIzq = EEPROM.read(kEepromPotencia + 1);
+  potenciaDer = EEPROM.read(kEepromPotencia + 2);
+}
+
+void guardarPotencias() {
+  EEPROM.update(kEepromPotencia, kFirmaPotencia);
+  EEPROM.update(kEepromPotencia + 1, potenciaIzq);
+  EEPROM.update(kEepromPotencia + 2, potenciaDer);
+}
+
+void informarPotencias() {
+  Serial.print(F("RECI: potencia izq="));
+  Serial.print(potenciaIzq);
+  Serial.print(F(" der="));
+  Serial.println(potenciaDer);
+}
+
+// D5-D13 son pines PWM en el Mega: el pin activo recibe la potencia y el
+// otro queda en LOW.
+void escribirMotor(uint8_t pinA, uint8_t pinB, bool adelante, bool invertir,
+                   uint8_t potencia = 255) {
   const bool sentido = invertir ? !adelante : adelante;
-  digitalWrite(pinA, sentido ? HIGH : LOW);
-  digitalWrite(pinB, sentido ? LOW : HIGH);
+  if (sentido) {
+    digitalWrite(pinB, LOW);
+    analogWrite(pinA, potencia);
+  } else {
+    digitalWrite(pinA, LOW);
+    analogWrite(pinB, potencia);
+  }
 }
 
 void escribirLadoIzquierdo(bool adelante) {
-  escribirMotor(kIzqIn1, kIzqIn2, adelante, kInvertirIzqA);
-  escribirMotor(kIzqIn3, kIzqIn4, adelante, kInvertirIzqB);
+  escribirMotor(kIzqIn1, kIzqIn2, adelante, kInvertirIzqA, potenciaIzq);
+  escribirMotor(kIzqIn3, kIzqIn4, adelante, kInvertirIzqB, potenciaIzq);
 }
 
 void escribirLadoDerecho(bool adelante) {
-  escribirMotor(kDerIn1, kDerIn2, adelante, kInvertirDerA);
-  escribirMotor(kDerIn3, kDerIn4, adelante, kInvertirDerB);
+  escribirMotor(kDerIn1, kDerIn2, adelante, kInvertirDerA, potenciaDer);
+  escribirMotor(kDerIn3, kDerIn4, adelante, kInvertirDerB, potenciaDer);
 }
 
 void detenerMotores();
@@ -1185,6 +1221,22 @@ void procesarComando(char* entrada) {
       Serial.print(distancia);
       Serial.println(F(" cm"));
     }
+  } else if (es(entrada, "VEL?") || es(entrada, "VEL")) {
+    informarPotencias();
+  } else if (empiezaCon(entrada, "VEL:I:") || empiezaCon(entrada, "VEL:D:")) {
+    // VEL:I:220 baja la rueda izquierda; VEL:D:220 la derecha. 255 = máximo.
+    const int valor = atoi(entrada + strlen("VEL:I:"));
+    if (valor < 60 || valor > 255) {
+      informar(F("ERROR: potencia entre 60 y 255."));
+      return;
+    }
+    if (toupper(entrada[4]) == 'I') {
+      potenciaIzq = static_cast<uint8_t>(valor);
+    } else {
+      potenciaDer = static_cast<uint8_t>(valor);
+    }
+    guardarPotencias();
+    informarPotencias();
   } else if (empiezaCon(entrada, "SERVO:")) {
     // Prueba de ángulo sin recargar: SERVO:150. Vuelve al centro con SERVO:90.
     if (modo != Modo::Detenido) {
@@ -1208,7 +1260,7 @@ void procesarComando(char* entrada) {
     if (!permitirMovimientoManual()) return;
     probarMotores();
   } else if (es(entrada, "HELP")) {
-    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? SENSORES? SERVO:n | BASE | V14 TRACE16 | STATUS"));
+    Serial.println(F("F B L R S | SET:BASE/P1/P2 | P1 P2 | VIDRIO PLASTICO | MOTORES BOTELLA? SENSORES? SERVO:n VEL? VEL:I:n VEL:D:n | BASE | V14 TRACE16 | STATUS"));
   } else {
     informar(F("ERROR: comando invalido. Escribe HELP."));
   }
@@ -1452,7 +1504,9 @@ void setup() {
                                 kDerIn1, kDerIn2, kDerIn3, kDerIn4};
   for (uint8_t pin : pinesMotor) pinMode(pin, OUTPUT);
   detenerMotores();
+  cargarPotencias();
   Serial.println(F("PASO 2: motores detenidos."));
+  informarPotencias();
   diagnosticarLineasI2c(F("despues de motores"));
 
   pinMode(kTrigFrontal, OUTPUT);
