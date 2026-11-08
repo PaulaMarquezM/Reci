@@ -47,8 +47,8 @@ constexpr unsigned long kPruebaMotorMs = 2000UL;
 // kServoIzquierda y kServoDerecha. Ajusta los ángulos con ReciServosTest.
 constexpr uint8_t kServoCompuertaPin = 3;
 constexpr uint8_t kServoCentro = 65;     // en 90 quedaba girado a la derecha
-constexpr uint8_t kServoIzquierda = 30;
-constexpr uint8_t kServoDerecha = 100;
+constexpr uint8_t kServoIzquierda = 20;  // 30 se quedaba corto (prueba 2026-11-08)
+constexpr uint8_t kServoDerecha = 110;  // 100 a veces no alcanzaba a mover la bandeja (prueba 2026-11-08)
 constexpr unsigned long kCompuertaAbiertaMs = 2000UL;
 // Después de reciclar, la LCD pide escanear el QR y la OLED lo muestra este
 // tiempo; luego RECI vuelve solo al saludo, listo para otra botella.
@@ -95,16 +95,19 @@ constexpr unsigned long kFrenteLibreAntesDeReanudarMs = 1000UL;
 // HC-SR04 trasero (el tercer ultrasónico): mira hacia atrás y frena a RECI
 // cuando regresa en reversa. Si no responde (sin cable), la reversa avanza
 // sin freno, así que móntalo antes de usar BASE desde la app.
-constexpr uint8_t kTrigTrasero = 26;
-constexpr uint8_t kEchoTrasero = 27;
+// Cableado real (prueba 2026-11-08): el sensor del hueco quedó en D26/D27,
+// así que el trasero usa D24/D25.
+constexpr uint8_t kTrigTrasero = 24;
+constexpr uint8_t kEchoTrasero = 25;
 
 // HC-SR04 interno (el que estaba al costado): mira el hueco donde se deja la
 // botella. Solo se busca botella durante kBuscarBotellaTrasPirMs después de
 // que el PIR ve a alguien; así el sensor no dispara fotos con el hueco vacío.
 // CALIBRACION: con la botella puesta, BOTELLA? debe dar <= kDistanciaBotellaCm.
-constexpr uint8_t kTrigBotella = 24;
-constexpr uint8_t kEchoBotella = 25;
-constexpr long kDistanciaBotellaCm = 10;
+constexpr uint8_t kTrigBotella = 26;
+constexpr uint8_t kEchoBotella = 27;
+// Hueco vacío mide ~28 cm; con 10 cm una botella acostada no lo disparaba.
+constexpr long kDistanciaBotellaCm = 20;
 constexpr unsigned long kBuscarBotellaTrasPirMs = 60000UL;
 // Por debajo de ~3 cm el HC-SR04 no mide bien: se descarta como ruido.
 constexpr long kDistanciaBotellaMinCm = 3;
@@ -1173,7 +1176,7 @@ void procesarComando(char* entrada) {
     const long distancia = distanciaBotellaCm();
     Serial.print(F("RECI: sensor de botella = "));
     if (distancia < 0) {
-      Serial.println(F("sin lectura. Revisa TRIG D24 / ECHO D25 / 5V / GND."));
+      Serial.println(F("sin lectura. Revisa TRIG D26 / ECHO D27 / 5V / GND."));
     } else {
       Serial.print(distancia);
       Serial.println(F(" cm"));
